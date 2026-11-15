@@ -17,3 +17,11 @@ evaluation:
   last_test_season: 2025
   min_train_matches: 1500
   refit_frequency: weekly          # see docs/adr/0002
+models:
+  team_blind: {}
+  elo:
+    k: 20.0                 # rating change per unit of surprise
+    home_advantage: 60.0    # Elo points added to the home side
+    initial_rating: 1500.0
+    promoted_gap: 0.0       # new team starts at mean of league's bottom 3, minus this
+    burn_in_seasons: 1      # first seasons of history not used to fit the H/D/A mapping

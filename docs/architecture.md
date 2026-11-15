@@ -13,8 +13,19 @@ raw CSV (immutable) --ingest--> validated matches table (parquet)
 ```
 Layers depend only downward: `cli` -> `evaluation`/`models` -> `data` -> `config`. Data code never imports model code.
 
+## Models (`models/`)
+Every model implements the `Model` protocol in `models/base.py`: `fit(train)` then `predict_proba(test)` returning an `(n, 3)` array of H/D/A probabilities. The runner fits a **fresh** model per fold and strips result columns from the test rows before calling `predict_proba`, so a model cannot read the answers.
+
+| Model | File | Status |
+|---|---|---|
+| Team-blind (league H/D/A rates) | `team_blind.py` | done |
+| Elo + multinomial logistic mapping | `elo.py` | done |
+| Dixon-Coles | `dixon_coles.py` | next |
+
+Run one: `football-edge evaluate --model elo`. Output in `reports/evaluation/<model>/`: `summary.csv` (kept in git), `predictions.parquet` (rebuilt, ignored), `run.json` (git SHA, parameters, data hash).
+
 Planned, not yet created (added when the phase starts, to avoid empty scaffolding):
-`models/` (team-blind baseline, Elo, Dixon-Coles), `markets/` (margin removal, log-loss, stack test), `live/` (API-Football client with rate limiting and caching; separate tables with a source tag), `serving/` (read-only results view).
+`markets/` (margin removal, stack test), `live/` (API-Football client with rate limiting and caching; separate tables with a source tag), `serving/` (read-only results view).
 
 ## Productionisation notes
 - Storage moves SQLite -> Postgres only if concurrent writers appear; parquet + SQLite suffices for research.

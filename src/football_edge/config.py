@@ -34,6 +34,7 @@ class Config:
     closing_priority: tuple[OddsSource, ...]
     pre_priority: tuple[OddsSource, ...]
     evaluation: EvaluationConfig
+    models: dict[str, dict[str, Any]]
 
     @property
     def matches_path(self) -> Path:
@@ -63,4 +64,5 @@ def load_config(path: str | Path | None = None, root: Path | None = None) -> Con
             ev["min_train_matches"],
             ev["refit_frequency"],
         ),
+        models={name: dict(params or {}) for name, params in raw.get("models", {}).items()},
     )

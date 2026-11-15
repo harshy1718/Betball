@@ -19,3 +19,5 @@ Thumbs.db
 # local-only folders
 _to_delete/
 raw data/
+# generated predictions (rebuild with `football-edge evaluate`); summaries are kept
+reports/**/predictions.parquet
