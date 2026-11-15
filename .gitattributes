@@ -1,0 +1,5 @@
+# Normalise line endings for text files across Windows/Linux.
+* text=auto
+# Raw data must stay byte-identical so the SHA-256 hashes in manifest.json hold.
+data/raw/** -text
+*.parquet binary

@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+# data: code is versioned, data is reproducible from raw + manifest
+data/interim/*
+data/processed/*
+data/external/*
+!data/*/.gitkeep
+# raw files ARE versioned (small, immutable, hash-checked)
+.DS_Store
+Thumbs.db
+# local-only folders
+_to_delete/
+raw data/

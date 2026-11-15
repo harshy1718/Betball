@@ -1,0 +1,19 @@
+# Single source of truth for paths and experiment parameters.
+paths:
+  raw: data/raw
+  processed: data/processed
+  reports: reports
+leagues: [E0, I1, SP1]            # EPL, Serie A, La Liga
+odds:
+  # First complete source wins, per row; the source used is stored with the row.
+  closing_priority:
+    - {name: PS,  cols: [PSCH, PSCD, PSCA]}
+    - {name: Avg, cols: [AvgCH, AvgCD, AvgCA]}
+  pre_priority:
+    - {name: PS,   cols: [PSH, PSD, PSA]}
+    - {name: B365, cols: [B365H, B365D, B365A]}
+evaluation:
+  first_test_season: 2018          # season = start year (2018 = 2018/19)
+  last_test_season: 2025
+  min_train_matches: 1500
+  refit_frequency: weekly          # see docs/adr/0002
