@@ -12,17 +12,22 @@ Odds = npt.NDArray[np.float64]
 Probs = npt.NDArray[np.float64]
 
 
-def overround(odds: Odds) -> npt.NDArray[np.float64]:
-    """>>> HARSH WRITES THIS <<<  Spec: docs/A4_1_margin_spec.md.
+def _check(odds: Odds) -> None:
+    if odds.ndim != 2 or odds.shape[1] != 3:
+        raise ValueError(f"odds must have shape (n, 3), got {odds.shape}")
+    if np.isnan(odds).any():
+        raise ValueError("odds contain missing prices")
+    if (odds <= 1).any():
+        raise ValueError("decimal odds must be above 1.0")
 
-    The bookmaker's margin per match: sum of 1/odds, minus 1.
-    """
-    raise NotImplementedError("A4.1: write overround (see docs/A4_1_margin_spec.md)")
+
+def overround(odds: Odds) -> npt.NDArray[np.float64]:
+    _check(odds)
+    probs = 1 / odds
+    return probs.sum(axis=1) - 1
 
 
 def remove_margin(odds: Odds) -> Probs:
-    """>>> HARSH WRITES THIS <<<  Spec: docs/A4_1_margin_spec.md.
-
-    Fair probabilities: each 1/odds divided by the row's sum of 1/odds.
-    """
-    raise NotImplementedError("A4.1: write remove_margin (see docs/A4_1_margin_spec.md)")
+    _check(odds)
+    inv = 1 / odds
+    return inv / inv.sum(axis=1, keepdims=True)
