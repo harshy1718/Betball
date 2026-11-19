@@ -27,8 +27,11 @@ EPS = 1e-12
 
 
 def blend(p_market: Probs, p_model: Probs, beta: float) -> Probs:
-    """>>> HARSH WRITES THIS <<<  Spec: docs/A4_2_blend_spec.md."""
-    raise NotImplementedError("A4.2: write blend (see docs/A4_2_blend_spec.md)")
+    if p_market.shape != p_model.shape or p_market.ndim != 2 or p_market.shape[1] != 3:
+        raise ValueError(f"shapes must match and be (n, 3): {p_market.shape} vs {p_model.shape}")
+    raw = p_market * ((p_model / p_market) ** beta)
+    blend = raw / (raw.sum(axis=1, keepdims=True))
+    return blend
 
 
 def fit_beta(p_market: Probs, p_model: Probs, outcomes: npt.NDArray[np.intp]) -> float:
