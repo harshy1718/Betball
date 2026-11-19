@@ -14,6 +14,12 @@ Outcomes = npt.NDArray[np.intp]
 
 
 def log_loss(probs: Probs, outcomes: Outcomes, eps: float = 1e-15) -> float:
+    """Mean of -ln(probability given to the actual result); lower is better.
+
+    Used instead of accuracy because a bet depends on probability x odds, so the
+    confidence itself must be accurate; log-loss punishes confident misses hardest.
+    Written by Harsh (spec: docs/A1_4_log_loss_spec.md).
+    """
     n = len(outcomes)
     if probs.shape != (n, 3):
         raise ValueError(f"probs must have shape ({n},3), got {probs.shape}")

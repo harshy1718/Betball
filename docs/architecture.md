@@ -20,7 +20,7 @@ Every model implements the `Model` protocol in `models/base.py`: `fit(train)` th
 |---|---|---|
 | Team-blind (league H/D/A rates) | `team_blind.py` | done |
 | Elo + multinomial logistic mapping | `elo.py` | done |
-| Dixon-Coles | `dixon_coles.py` | next |
+| Dixon-Coles (goals model, time decay, promoted-team prior) | `dixon_coles.py` | done, untuned |
 
 Run one: `football-edge evaluate --model elo`. Output in `reports/evaluation/<model>/`: `summary.csv` (kept in git), `predictions.parquet` (rebuilt, ignored), `run.json` (git SHA, parameters, data hash).
 

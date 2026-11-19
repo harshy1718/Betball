@@ -1,0 +1,15 @@
+{
+  "model": "dixon_coles",
+  "params": {
+    "xi": 0.0019,
+    "ridge": 2.0,
+    "max_goals": 10,
+    "no_crowd_start": "2020-06-01",
+    "no_crowd_end": "2021-05-31",
+    "min_promoted_matches": 5
+  },
+  "created_utc": "2026-11-19T20:01:02+00:00",
+  "git_sha": "8cce590",
+  "data_sha256": "dabd8cb1da8a41668fdd392e575beec8b83a129c41dc7a0d33c3084777797664",
+  "n_predictions": 9120
+}

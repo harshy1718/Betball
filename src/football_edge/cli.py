@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=_ingest)
 
     p = sub.add_parser("evaluate", help="walk-forward evaluation of one model")
-    p.add_argument("--model", required=True, choices=["team_blind", "elo"])
+    p.add_argument("--model", required=True, choices=["team_blind", "elo", "dixon_coles"])
     p.set_defaults(func=_evaluate)
 
     args = parser.parse_args(argv)
