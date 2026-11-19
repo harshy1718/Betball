@@ -24,8 +24,11 @@ Every model implements the `Model` protocol in `models/base.py`: `fit(train)` th
 
 Run one: `football-edge evaluate --model elo`. Output in `reports/evaluation/<model>/`: `summary.csv` (kept in git), `predictions.parquet` (rebuilt, ignored), `run.json` (git SHA, parameters, data hash).
 
+## Markets (`markets/`)
+`margin.py`: odds to fair probabilities (Harsh, in progress). Next: the stack test.
+
 Planned, not yet created (added when the phase starts, to avoid empty scaffolding):
-`markets/` (margin removal, stack test), `live/` (API-Football client with rate limiting and caching; separate tables with a source tag), `serving/` (read-only results view).
+`live/` (API-Football client with rate limiting and caching; separate tables with a source tag), `serving/` (read-only results view).
 
 ## Productionisation notes
 - Storage moves SQLite -> Postgres only if concurrent writers appear; parquet + SQLite suffices for research.
