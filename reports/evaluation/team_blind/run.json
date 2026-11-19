@@ -1,0 +1,8 @@
+{
+  "model": "team_blind",
+  "params": {},
+  "created_utc": "2026-11-19T19:36:22+00:00",
+  "git_sha": "3e5abdb",
+  "data_sha256": "dabd8cb1da8a41668fdd392e575beec8b83a129c41dc7a0d33c3084777797664",
+  "n_predictions": 9120
+}

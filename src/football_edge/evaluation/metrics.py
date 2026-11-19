@@ -14,18 +14,21 @@ Outcomes = npt.NDArray[np.intp]
 
 
 def log_loss(probs: Probs, outcomes: Outcomes, eps: float = 1e-15) -> float:
-    """>>> HARSH WRITES THIS <<<  Spec: docs/A1_4_log_loss_spec.md.
-
-    Mean negative log probability given to the outcome that happened.
-    """
-    raise NotImplementedError("A1.4: write log_loss (see docs/A1_4_log_loss_spec.md)")
+    n = len(outcomes)
+    if probs.shape != (n, 3):
+        raise ValueError(f"probs must have shape ({n},3), got {probs.shape}")
+    if (probs < 0).any() or (probs > 1).any():
+        raise ValueError("probabilities must be between 0 and 1")
+    if not np.allclose(probs.sum(axis=1), 1.0, atol=1e-6):
+        raise ValueError("each row of probabilities must sum to 1")
+    if not np.isin(outcomes, [0, 1, 2]).all():
+        raise ValueError("outcomes must be 0, 1 or 2")
+    p_actual = probs[np.arange(n), outcomes]
+    p_actual = np.clip(p_actual, eps, 1.0)
+    return float(-np.mean(np.log(p_actual)))
 
 
 def brier_score(probs: Probs, outcomes: Outcomes) -> float:
-    """Mean squared distance between the forecast and the one-hot result.
-
-    0 is perfect; always predicting (1/3, 1/3, 1/3) scores 2/3.
-    """
     n = len(outcomes)
     onehot = np.zeros_like(probs)
     onehot[np.arange(n), outcomes] = 1.0
