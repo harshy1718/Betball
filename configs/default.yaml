@@ -26,9 +26,17 @@ models:
     promoted_gap: 0.0       # new team starts at mean of league's bottom 3, minus this
     burn_in_seasons: 1      # first seasons of history not used to fit the H/D/A mapping
   dixon_coles:
-    xi: 0.0019              # time decay per day (half-life about one year)
+    xi: 0.0025              # time decay per day (half-life ~9 months); tuned on 2018-19, locked
     ridge: 2.0              # pull of team ratings towards their prior
     max_goals: 10
     no_crowd_start: "2020-06-01"
     no_crowd_end: "2021-05-31"
     min_promoted_matches: 5
+tuning:
+  # Settings are chosen on these test seasons only, then locked in models: above.
+  # Seasons after them are never used for choosing, so their results stay honest.
+  dixon_coles:
+    seasons: [2018, 2019]
+    grid:
+      xi: [0.0010, 0.0015, 0.0019, 0.0025, 0.0035, 0.0050]
+      ridge: [0.5, 1.0, 2.0, 4.0, 8.0]

@@ -35,6 +35,7 @@ class Config:
     pre_priority: tuple[OddsSource, ...]
     evaluation: EvaluationConfig
     models: dict[str, dict[str, Any]]
+    tuning: dict[str, dict[str, Any]]
 
     @property
     def matches_path(self) -> Path:
@@ -65,4 +66,5 @@ def load_config(path: str | Path | None = None, root: Path | None = None) -> Con
             ev["refit_frequency"],
         ),
         models={name: dict(params or {}) for name, params in raw.get("models", {}).items()},
+        tuning={name: dict(t or {}) for name, t in raw.get("tuning", {}).items()},
     )

@@ -43,6 +43,29 @@ def _evaluate(args: argparse.Namespace) -> None:
     print(f"\nsaved to {out_dir}")
 
 
+def _tune(args: argparse.Namespace) -> None:
+    from football_edge.evaluation.folds import make_folds
+    from football_edge.evaluation.tuning import grid_search
+
+    cfg = load_config(args.config)
+    ev = cfg.evaluation
+    tuning = cfg.tuning.get(args.model)
+    if not tuning:
+        raise SystemExit(f"no tuning grid for {args.model!r} in the config")
+    matches = load_matches(cfg)
+    folds = make_folds(matches, ev.first_test_season, ev.last_test_season, ev.min_train_matches)
+    lo, hi = tuning["seasons"]
+    table = grid_search(
+        matches, folds, args.model, cfg.models.get(args.model, {}), tuning["grid"], (lo, hi)
+    )
+    out = cfg.reports_dir / "tuning" / f"{args.model}.csv"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    table.to_csv(out, index=False, float_format="%.5f")
+    print(table.head(10).to_string(index=False))
+    print(f"\nbest on seasons {lo}-{hi}: {table.iloc[0].drop(['log_loss', 'n']).to_dict()}")
+    print(f"saved to {out}  (copy the best values into models: in the config to lock them)")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="football-edge")
     parser.add_argument("--config", default=None)
@@ -55,6 +78,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("evaluate", help="walk-forward evaluation of one model")
     p.add_argument("--model", required=True, choices=["team_blind", "elo", "dixon_coles"])
     p.set_defaults(func=_evaluate)
+
+    p = sub.add_parser("tune", help="grid-search settings on the tuning seasons only")
+    p.add_argument("--model", required=True, choices=["dixon_coles"])
+    p.set_defaults(func=_tune)
 
     args = parser.parse_args(argv)
     configure_logging()
