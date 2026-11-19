@@ -116,3 +116,48 @@ def test_analytic_gradient_matches_numeric(history, monkeypatch):
         ]
     )
     np.testing.assert_allclose(grad, num, atol=1e-4)
+
+
+def _with_shots(history, unlucky="B"):
+    # Every side gets 4 shots on target, except `unlucky`, which gets 9 but scores the same.
+    df = history.copy()
+    df["HST"] = np.where(df.home == unlucky, 9, 4)
+    df["AST"] = np.where(df.away == unlucky, 9, 4)
+    return df
+
+
+def test_shots_weight_zero_ignores_shots(history):
+    plain = DixonColes(DixonColesParams(shots_weight=0.0))
+    plain.fit(history)
+    shots = DixonColes(DixonColesParams(shots_weight=0.0))
+    shots.fit(_with_shots(history))
+    np.testing.assert_allclose(plain.attack, shots.attack)
+
+
+def test_shots_raise_rating_of_team_creating_chances(history):
+    goals_only = DixonColes(DixonColesParams(shots_weight=0.0))
+    goals_only.fit(_with_shots(history))
+    with_shots = DixonColes(DixonColesParams(shots_weight=1.0))
+    with_shots.fit(_with_shots(history))
+    b = with_shots._team_idx[("E0", "B")]
+    assert with_shots.attack[b] > goals_only.attack[b]
+
+
+def test_gradient_correct_with_shots(history, monkeypatch):
+    captured = {}
+    real_minimize = dc_module.minimize
+
+    def spy(fun, x0, **kwargs):
+        captured["fun"], captured["x0"] = fun, x0
+        return real_minimize(fun, x0, **kwargs)
+
+    monkeypatch.setattr(dc_module, "minimize", spy)
+    DixonColes(DixonColesParams(shots_weight=0.5)).fit(_with_shots(history))
+    fun = captured["fun"]
+    theta = captured["x0"] + np.random.default_rng(2).normal(0, 0.1, len(captured["x0"]))
+    theta[3] = 0.05
+    _, grad = fun(theta)
+    num = np.array(
+        [(fun(theta + 1e-6 * e)[0] - fun(theta - 1e-6 * e)[0]) / 2e-6 for e in np.eye(len(theta))]
+    )
+    np.testing.assert_allclose(grad, num, atol=1e-4)

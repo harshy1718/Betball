@@ -30,6 +30,8 @@ def _frame():
             "FTHG": [1, 0, 2, 1],
             "FTAG": [0, 0, 1, 3],
             "FTR": ["H", "D", "H", "A"],
+            "HST": [5, 2, 6, 3],
+            "AST": [1, 2, 2, 7],
         }
     )
 
@@ -40,4 +42,4 @@ def test_walk_forward_one_row_per_test_match_and_hides_results():
     preds = walk_forward(m, folds, Uniform)
     assert preds["row"].tolist() == [2, 3]
     assert preds["outcome"].tolist() == [0, 2]
-    assert not {"FTR", "FTHG", "FTAG"} & Uniform.last_test_columns
+    assert not {"FTR", "FTHG", "FTAG", "HST", "AST"} & Uniform.last_test_columns

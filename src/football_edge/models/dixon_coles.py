@@ -17,6 +17,11 @@ Expected goals for one match (log scale):
 Goals are Poisson, with the Dixon-Coles correction `rho` for the four
 low scores (0-0, 1-0, 0-1, 1-1), which plain Poisson gets slightly wrong.
 
+Shots (optional, `shots_weight`): goals are rare and noisy, so team ratings can
+be learned from a blend of actual goals and "shot-based goals" (shots on target
+x the league's goals-per-shot-on-target rate). 0 = goals only, 1 = shots only.
+Only past matches' shots are used; the predicted match's stats are never seen.
+
 Three things keep it honest and stable:
 1. Time decay: a match `t` days before the latest training date gets weight
    exp(-xi * t), so recent form counts more than results from years ago.
@@ -53,6 +58,7 @@ class DixonColesParams:
     no_crowd_start: str = "2020-06-01"
     no_crowd_end: str = "2021-05-31"
     min_promoted_matches: int = 5  # matches needed for a team-season to inform the prior
+    shots_weight: float = 0.0  # 0 = learn from goals only, 1 = from shots on target only
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> DixonColesParams:
@@ -111,6 +117,24 @@ class DixonColes:
             return 0.0, 0.0
         return float(np.mean(att)), float(np.mean(dfn))
 
+    def _targets(self, df: pd.DataFrame, x: IntArr, y: IntArr) -> tuple[FloatArr, FloatArr]:
+        """Goals, or a blend of goals and shot-based goals, per side of each match."""
+        sw = self.params.shots_weight
+        xf, yf = x.astype(np.float64), y.astype(np.float64)
+        if sw == 0.0 or not {"HST", "AST"} <= set(df.columns):
+            return xf, yf
+        hst = df["HST"].to_numpy(dtype=np.float64)
+        ast = df["AST"].to_numpy(dtype=np.float64)
+        ok = ~(np.isnan(hst) | np.isnan(ast))
+        conv = {}
+        for lg, g in df[ok].groupby("league"):
+            sot = g["HST"].sum() + g["AST"].sum()
+            conv[lg] = (g["FTHG"].sum() + g["FTAG"].sum()) / sot if sot > 0 else 0.0
+        rate = df["league"].map(conv).fillna(0.0).to_numpy(dtype=np.float64)
+        tx = np.where(ok, (1 - sw) * xf + sw * np.nan_to_num(hst) * rate, xf)
+        ty = np.where(ok, (1 - sw) * yf + sw * np.nan_to_num(ast) * rate, yf)
+        return tx, ty
+
     # ---------------------------------------------------------------- fitting
     def fit(self, train: pd.DataFrame) -> None:
         p = self.params
@@ -145,6 +169,7 @@ class DixonColes:
         a_i = np.array([self._team_idx[k] for k in zip(df.league, df.away, strict=True)])
         x = df["FTHG"].to_numpy(dtype=np.intp)
         y = df["FTAG"].to_numpy(dtype=np.intp)
+        tx, ty = self._targets(df, x, y)
         nc = self._no_crowd(df["date"])
         age_days = (df["date"].max() - df["date"]).dt.days.to_numpy(dtype=float)
         w = np.exp(-p.xi * age_days)
@@ -166,10 +191,12 @@ class DixonColes:
             lam, mu = np.exp(eta_h), np.exp(eta_a)
             t = np.maximum(tau(x, y, lam, mu, rho), 1e-10)
 
-            ll = np.log(t) + x * eta_h - lam + y * eta_a - mu
+            # Poisson terms use the (possibly shot-blended) targets; the low-score
+            # correction always uses the actual score.
+            ll = np.log(t) + tx * eta_h - lam + ty * eta_a - mu
             # d log-lik / d eta_h, d eta_a, d rho for each match
-            g_h = x - lam
-            g_a = y - mu
+            g_h = tx - lam
+            g_a = ty - mu
             g_rho = np.zeros_like(lam)
             g_h = g_h + np.where(is00, -lam * mu * rho / t, 0) + np.where(is01, lam * rho / t, 0)
             g_a = g_a + np.where(is00, -lam * mu * rho / t, 0) + np.where(is10, mu * rho / t, 0)

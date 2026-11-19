@@ -14,7 +14,8 @@ from football_edge.models.base import Model, outcome_index
 
 log = logging.getLogger(__name__)
 
-_RESULT_COLS = ["FTHG", "FTAG", "FTR", "HTHG", "HTAG"]
+# Everything known only after kick-off; removed from test rows before predicting.
+_RESULT_COLS = ["FTHG", "FTAG", "FTR", "HTHG", "HTAG", "HS", "AS", "HST", "AST"]
 
 
 def walk_forward(

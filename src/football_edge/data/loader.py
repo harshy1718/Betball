@@ -20,7 +20,9 @@ from football_edge.data.schema import validate_matches
 
 log = logging.getLogger(__name__)
 _FILE_RE = re.compile(r"^(E0|I1|SP1)")
-_KEEP = ("FTHG", "FTAG", "FTR", "HTHG", "HTAG")
+# Results and in-match stats. These describe a match AFTER it is played: models may
+# learn from them for past matches but must never see them for the match predicted.
+_KEEP = ("FTHG", "FTAG", "FTR", "HTHG", "HTAG", "HS", "AS", "HST", "AST")
 
 
 def read_raw_csv(path: Path) -> pd.DataFrame:
