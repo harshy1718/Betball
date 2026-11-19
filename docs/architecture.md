@@ -25,7 +25,7 @@ Every model implements the `Model` protocol in `models/base.py`: `fit(train)` th
 Run one: `football-edge evaluate --model elo`. Output in `reports/evaluation/<model>/`: `summary.csv` (kept in git), `predictions.parquet` (rebuilt, ignored), `run.json` (git SHA, parameters, data hash).
 
 ## Markets (`markets/`)
-`margin.py`: odds to fair probabilities (Harsh, in progress). Next: the stack test.
+`margin.py`: odds to fair probabilities (Harsh). `stack.py`: the pre-registered stack test; `blend` by Harsh. Run: `football-edge stack-test --model dixon_coles`; report in `reports/stack_test/<model>/`.
 
 Planned, not yet created (added when the phase starts, to avoid empty scaffolding):
 `live/` (API-Football client with rate limiting and caching; separate tables with a source tag), `serving/` (read-only results view).

@@ -66,6 +66,40 @@ def _tune(args: argparse.Namespace) -> None:
     print(f"saved to {out}  (copy the best values into models: in the config to lock them)")
 
 
+def _stack_test(args: argparse.Namespace) -> None:
+    import json
+
+    import pandas as pd
+
+    from football_edge.markets.margin import remove_margin
+    from football_edge.markets.stack import render_report, stack_test
+
+    cfg = load_config(args.config)
+    preds_path = cfg.reports_dir / "evaluation" / args.model / "predictions.parquet"
+    if not preds_path.exists():
+        raise SystemExit(f"run `football-edge evaluate --model {args.model}` first")
+    preds = pd.read_parquet(preds_path)
+    matches = load_matches(cfg)
+    odds = matches.iloc[preds["row"].to_numpy()][["close_h", "close_d", "close_a"]].to_numpy()
+    ok = ~pd.isna(odds).any(axis=1)
+    if not ok.all():
+        print(f"note: {int((~ok).sum())} matches without closing odds were left out")
+    preds, odds = preds[ok].reset_index(drop=True), odds[ok].astype(float)
+    p_market = remove_margin(odds)
+    p_model = preds[["p_h", "p_d", "p_a"]].to_numpy()
+    res = stack_test(preds, p_market, p_model, eval_seasons=args.eval_seasons)
+    out = cfg.reports_dir / "stack_test" / args.model
+    out.mkdir(parents=True, exist_ok=True)
+    report = render_report(res, args.model)
+    (out / "verdict.md").write_text(report, encoding="utf-8")
+    summary = {k: v for k, v in res.__dict__.items() if k != "criteria"}
+    summary["criteria"] = res.criteria
+    summary["passed"] = res.passed
+    (out / "verdict.json").write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
+    print(report)
+    print(f"saved to {out}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="football-edge")
     parser.add_argument("--config", default=None)
@@ -82,6 +116,13 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("tune", help="grid-search settings on the tuning seasons only")
     p.add_argument("--model", required=True, choices=["dixon_coles"])
     p.set_defaults(func=_tune)
+
+    p = sub.add_parser("stack-test", help="pre-registered test: does the model beat the market?")
+    p.add_argument("--model", required=True, choices=["team_blind", "elo", "dixon_coles"])
+    p.add_argument(
+        "--eval-seasons", type=int, nargs="+", default=[2020, 2021, 2022, 2023, 2024, 2025]
+    )
+    p.set_defaults(func=_stack_test)
 
     args = parser.parse_args(argv)
     configure_logging()
