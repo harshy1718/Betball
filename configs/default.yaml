@@ -108,7 +108,15 @@ staking:                    # docs/adr/0006-staking-policy.md
   max_match_fraction: 0.04  # all markets on one match together: at most 4% of budget
   stop_loss_fraction: 0.30  # month down 30% of budget -> no more stakes that month
   stake_rounding: 10
-  confidence: market        # tiers use the margin-free market probability when prices exist
+  confidence: model         # model = our own probabilities only (Harsh's choice, 21 Nov 2026);
+                            # market = the margin-free market probability when prices exist
+  golden_bar:               # Harsh's golden bar (22 Nov 2026): model match-winner pick at 60-64%.
+    lo: 0.60                # UNPROVEN (window search, ADR 0012); every pick is logged and settled
+    hi: 0.64                # by `football-edge settle`. Judge at 200 settled picks.
+    log_path: bets/golden_bar.csv
+  golden_cs:                # correct-score golden bar (22 Nov 2026): back the likeliest score when
+    lo: 0.12                # its chance is 12%+. UNPROVEN: in 2020-26 it hit 14.7% (break-even 6.80);
+    log_path: bets/golden_cs.csv  # no historical correct-score prices exist. Judge at 200.
   disagree_at: 0.08         # flag picks where model and market differ by 8+ points
   doubles: {max_count: 2, stake_fraction: 0.01, min_leg_tier: high}
   log_path: bets/log.csv

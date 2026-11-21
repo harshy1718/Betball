@@ -26,7 +26,10 @@ def render_card(
     model: str,
     notes: list[str],
     record: pd.DataFrame | None = None,
+    golden: dict[str, float] | None = None,
 ) -> str:
+    """`golden`: {"lo", "hi"} for the match-winner bar and "cs_lo" for the correct-score bar."""
+    g = golden or {}
     cur = policy.currency
     staked = float(singles["stake"].sum() + (doubles["stake"].sum() if len(doubles) else 0))
     lines = [
@@ -52,25 +55,46 @@ def render_card(
     ]
     for n in notes:
         lines += [f"> **{n}**", ""]
+    gold = [(k, f, *_golden(f, g)) for k, f in fc.iterrows()]
+    if g:
+        lines += [
+            "## ⭐ Golden bets on this card",
+            "",
+            f"Match winner: the model's pick at {g.get('lo', 0.6):.0%}-{g.get('hi', 0.64):.0%}. "
+            f"Correct score: the likeliest score at {g.get('cs_lo', 0.12):.0%}+, only at "
+            f"{CS_MIN_ODDS:.2f} or more. Both are UNPROVEN and tracked (`football-edge settle`).",
+            "",
+            "| Match | Golden match winner | Golden correct score |",
+            "|---|---|---|",
+        ]
+        hits = [(f, w, c) for _, f, w, c in gold if w or c]
+        for f, w, c in hits:
+            lines.append(f"| {f['home']} v {f['away']} | {w or '-'} | {c or '-'} |")
+        if not hits:
+            lines.append("| none | - | - |")
+        lines.append("")
     for k, f in fc.iterrows():
         lines += [
             f"## {_LEAGUE_NAMES.get(f['league'], f['league'])}, {f['date']:%a %d %b}: "
             f"{f['home']} v {f['away']}",
             "",
-            f"Model: Home {f['p_h']:.0%} | Draw {f['p_d']:.0%} | Away {f['p_a']:.0%} | "
+            f"Model: {f['home']} {f['p_h']:.0%} | Draw {f['p_d']:.0%} | "
+            f"{f['away']} {f['p_a']:.0%} | "
             f"Over 2.5 {f['p_over25']:.0%} | Both score {f['p_btts_yes']:.0%}",
             "",
             _market_line(f),
             "",
-            f"Expected goals {f['exp_home']:.2f} - {f['exp_away']:.2f}. "
+            f"Expected goals: {f['home']} {f['exp_home']:.2f}, {f['away']} {f['exp_away']:.2f}. "
             f"Likeliest scores: {f['top_scores']}.",
             "",
             *_counts_lines(f, record),
             "| Market | Pick | Prob | Confidence | Model | Market | Fair odds | Min odds "
-            "| Site odds | Exp. value | Stake tier | Stake | Decision |",
-            "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+            "| Site odds | Exp. value | Stake tier | Stake | Decision | Golden |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
         ]
+        win_gold, cs_gold = _golden(f, g)
         for _, s in singles[singles["fixture"] == k].iterrows():
+            star = "⭐" if (s["market"] == "1x2" and win_gold) else "-"
             lines.append(
                 f"| {s['market']} | {s['selection']}{' ⚠' if s['disagree'] else ''} "
                 f"| {s['prob']:.0%} {s['prob_source']} | {_conf(record, s)} "
@@ -78,7 +102,15 @@ def render_card(
                 f"| {_num(s['market_prob'], '.0%')} | {s['fair_odds']:.2f} "
                 f"| {s['min_odds']:.2f} | {_num(s['odds'], '.2f')} "
                 f"| {_num(s['exp_value'], '+.1%')} "
-                f"| {s['tier']} | {s['stake']:,.0f} | {s['status']} |"
+                f"| {s['tier']} | {s['stake']:,.0f} | {s['status']} | {star} |"
+            )
+        if "top_score" in f:
+            p_cs = float(f["top_score_p"])
+            lines.append(
+                f"| score | {f['top_score']} | {p_cs:.1%} model | - | {p_cs:.1%} | - "
+                f"| {1 / p_cs:.2f} | {CS_MIN_ODDS:.2f} | - | - | - | 0 "
+                f"| {'golden: take at ' + format(CS_MIN_ODDS, '.2f') + '+' if cs_gold else '-'} "
+                f"| {'⭐' if cs_gold else '-'} |"
             )
         lines.append("")
     if len(doubles):
@@ -105,9 +137,29 @@ def _market_line(f: pd.Series) -> str:
     if all(pd.isna(f.get(c, float("nan"))) for c in ("mkt_h", "mkt_over25", "mkt_btts_yes")):
         return "Market: no prices given."
     return (
-        f"Market: Home {pct('mkt_h')} | Draw {pct('mkt_d')} | Away {pct('mkt_a')} | "
+        f"Market: {f['home']} {pct('mkt_h')} | Draw {pct('mkt_d')} | {f['away']} {pct('mkt_a')} | "
         f"Over 2.5 {pct('mkt_over25')} | Both score {pct('mkt_btts_yes')}"
     )
+
+
+CS_MIN_ODDS = 6.80  # break-even of the correct-score bar in 2020-26 (14.7% came true)
+
+
+def _golden(f: pd.Series, g: dict[str, float]) -> tuple[str, str]:
+    """Text for the two golden bars on one match ('' when it does not qualify)."""
+    if not g:
+        return "", ""
+    probs = {"home": float(f["p_h"]), "draw": float(f["p_d"]), "away": float(f["p_a"])}
+    side = max(probs, key=lambda x: probs[x])
+    p = probs[side]
+    win = ""
+    if g.get("lo", 0.60) <= p < g.get("hi", 0.64):
+        name = {"home": f"{f['home']} win", "away": f"{f['away']} win", "draw": "draw"}[side]
+        win = f"⭐ {name} {p:.0%}"
+    cs = ""
+    if "top_score_p" in f and float(f["top_score_p"]) >= g.get("cs_lo", 1.1):
+        cs = f"⭐ {f['top_score']} {float(f['top_score_p']):.1%} (take at {CS_MIN_ODDS:.2f}+)"
+    return win, cs
 
 
 def _conf(record: pd.DataFrame | None, s: pd.Series) -> str:

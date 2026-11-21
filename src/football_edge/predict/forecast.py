@@ -85,6 +85,8 @@ def forecast(model: DixonColes, fixtures: pd.DataFrame, top_scores: int = 3) -> 
                 "exp_home": float(lam[k]),
                 "exp_away": float(mu[k]),
                 "top_scores": ", ".join(scores),
+                "top_score": scores[0].split(" ")[0],
+                "top_score_p": float(m.flat[order[0]]),
             }
         )
     return pd.concat([fixtures.reset_index(drop=True), pd.DataFrame(rows)], axis=1)

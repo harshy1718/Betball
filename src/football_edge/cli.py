@@ -193,6 +193,101 @@ def _price_test(args: argparse.Namespace) -> None:
     print(f"saved to {out}")
 
 
+def _early_totals_test(args: argparse.Namespace) -> None:
+    import pandas as pd
+
+    from football_edge.markets.early_totals import (
+        VARIANTS,
+        join,
+        load_early_prices,
+        render,
+        run_variant,
+        test_a,
+    )
+
+    cfg = load_config(args.config)
+    preds = pd.read_parquet(cfg.reports_dir / "evaluation" / "dixon_coles" / "predictions.parquet")
+    lo, hi = 2020, 2025
+    preds = preds[preds["season"].between(lo, hi)]
+    prices = load_early_prices(cfg.raw_dir, list(cfg.leagues), (lo, hi))
+    m = join(preds, prices)
+    level = 1 - 0.05 / len(VARIANTS)
+    out = cfg.reports_dir / "early_totals"
+    out.mkdir(parents=True, exist_ok=True)
+    results = [run_variant(m, v, level) for v in VARIANTS]
+    for r in results:
+        r.bets.to_csv(out / f"bets_{r.variant.name}.csv", index=False, float_format="%.4f")
+    report = render(test_a(m, level), results, level, len(m))
+    (out / "verdict.md").write_text(report, encoding="utf-8")
+    print(report)
+    print(f"saved to {out}  ({len(preds):,} predictions, {len(m):,} matched to prices)")
+
+
+def _h2h_weight_test(args: argparse.Namespace) -> None:
+    import pandas as pd
+
+    from football_edge.evaluation.h2h_weight import run
+
+    cfg = load_config(args.config)
+    preds = pd.read_parquet(cfg.reports_dir / "evaluation" / "dixon_coles" / "predictions.parquet")
+    report = run(preds, load_matches(cfg), years=args.years)
+    out = cfg.reports_dir / "h2h_weight"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "verdict.md").write_text(report, encoding="utf-8")
+    print(report)
+    print(f"saved to {out}")
+
+
+def _bar_test(args: argparse.Namespace) -> None:
+    import pandas as pd
+
+    from football_edge.evaluation.prob_bar import run
+
+    cfg = load_config(args.config)
+    preds = pd.read_parquet(cfg.reports_dir / "evaluation" / "dixon_coles" / "predictions.parquet")
+    report = run(preds, cfg.raw_dir, list(cfg.leagues))
+    out = cfg.reports_dir / "prob_bar"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "verdict.md").write_text(report, encoding="utf-8")
+    print(report)
+    print(f"saved to {out}")
+
+
+def _window_search(args: argparse.Namespace) -> None:
+    import pandas as pd
+
+    from football_edge.evaluation.prob_bar import load_prices
+    from football_edge.evaluation.window_search import run
+
+    cfg = load_config(args.config)
+    preds = pd.read_parquet(cfg.reports_dir / "evaluation" / "dixon_coles" / "predictions.parquet")
+    preds["date"] = pd.to_datetime(preds["date"]).dt.normalize()
+    prices = load_prices(cfg.raw_dir, list(cfg.leagues), range(2018, 2026))
+    m = preds.merge(prices, on=["league", "date", "home", "away"], how="left")
+    report = run(m)
+    out = cfg.reports_dir / "window_search"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "verdict.md").write_text(report, encoding="utf-8")
+    print(report)
+    print(f"saved to {out}")
+
+
+def _price(args: argparse.Namespace) -> None:
+    from football_edge.betting import golden
+
+    cfg = load_config(args.config)
+    key = "golden_cs" if args.bar == "score" else "golden_bar"
+    default = "bets/golden_cs.csv" if args.bar == "score" else "bets/golden_bar.csv"
+    path = cfg.root / (cfg.staking.get(key) or {}).get("log_path", default)
+    done = golden.set_price(path, args.team, args.odds)
+    if not done:
+        raise SystemExit(f"no unsettled {args.bar} pick with a team matching '{args.team}'")
+    for d in done:
+        print(f"saved: {d}")
+    if args.bar == "score" and args.odds < 6.80:
+        print("note: below 6.80, the break-even price for this bar; history says skip it")
+
+
 def _build_features(args: argparse.Namespace) -> None:
     from football_edge.features.build import build_from_folder, coverage
 
@@ -486,7 +581,8 @@ def _script(args: argparse.Namespace) -> None:
     fc, _ = forecast_fixtures(cfg, history, fixtures)
     record = load_track_record(cfg.reports_dir / "confidence" / "track_record.csv")
     names = display_names(aliases, cfg.content.get("display_names"))
-    sheets = [build_fact_sheet(f, history, record, names) for _, f in fc.iterrows()]
+    source = str(cfg.staking.get("confidence", "model"))
+    sheets = [build_fact_sheet(f, history, record, names, source) for _, f in fc.iterrows()]
     if args.next is not None:
         cc = cfg.content
         chosen = pick_matches(
@@ -581,6 +677,30 @@ def _predict(args: argparse.Namespace) -> None:
                 odds_ou25=tuple(args.ou_odds) if args.ou_odds else None,
                 aliases_path=aliases_path,
             )
+            odds_file = cfg.root / "data" / "upcoming" / "fixtures.csv"
+            if not (args.odds or args.ou_odds) and odds_file.exists():
+                # No prices typed in: use the market's prices for this match if the odds
+                # file lists it, so the fair price is the market's, not the model's.
+                priced = load_fixtures(
+                    odds_file,
+                    known,
+                    cfg.leagues,
+                    odds_source=args.odds_source or pc.get("odds_source", "Avg"),
+                    aliases_path=aliases_path,
+                    allow_unknown=True,
+                )
+                f0 = fixtures.iloc[0]
+                hit = priced[(priced["home"] == f0["home"]) & (priced["away"] == f0["away"])]
+                if args.date:
+                    hit = hit[hit["date"] == f0["date"]]
+                if not hit.empty:
+                    fixtures = hit.sort_values("date").head(1).reset_index(drop=True)
+                    print(f"market prices: {odds_file.name}, {fixtures.iloc[0]['date']:%d %b}")
+                else:
+                    print(
+                        "market prices: this match is not in data/upcoming/fixtures.csv "
+                        "(run `football-edge update`); fair prices below are the MODEL's"
+                    )
         elif args.next is not None:
             from football_edge.data.schedule import upcoming
 
@@ -642,9 +762,31 @@ def _predict(args: argparse.Namespace) -> None:
     record = load_track_record(cfg.reports_dir / "confidence" / "track_record.csv")
     if record is None:
         warnings.append("no confidence track record yet: run `football-edge build-confidence`")
+    gb, cs = cfg.staking.get("golden_bar") or {}, cfg.staking.get("golden_cs") or {}
+    gold: dict[str, float] = {}
+    if gb:
+        gold.update(lo=float(gb.get("lo", 0.60)), hi=float(gb.get("hi", 0.64)))
+    if cs:
+        gold.update(cs_lo=float(cs.get("lo", 0.12)))
     card = render_card(
-        fc, singles, doubles, policy, info, model_name, warnings + notes, record=record
-    )
+        fc, singles, doubles, policy, info, model_name, warnings + notes, record=record,
+        golden=gold,
+    )  # fmt: skip
+    if gold:
+        from football_edge.betting import golden
+
+        track = ["", "## Golden bar tracking", ""]
+        if gb:
+            gpath = cfg.root / gb.get("log_path", "bets/golden_bar.csv")
+            n_new = golden.log_picks(golden.golden_picks(fc, gold["lo"], gold["hi"]), gpath, today)
+            track.append(f"- {n_new} new pick(s) logged. {golden.scoreboard(golden.read(gpath))}")
+        if cs:
+            cpath = cfg.root / cs.get("log_path", "bets/golden_cs.csv")
+            n_new = golden.log_picks(golden.cs_picks(fc, gold["cs_lo"]), cpath, today)
+            board = golden.scoreboard(golden.read(cpath), "Correct-score bar")
+            track.append(f"- {n_new} new pick(s) logged. {board} Type your site's price into "
+                         f"{cpath.name} (site_odds) to track profit.")  # fmt: skip
+        card += "\n".join(track) + "\n"
     (out / "card.md").write_text(card, encoding="utf-8")
     print(card)
     print(f"saved to {out}")
@@ -658,10 +800,25 @@ def _settle(args: argparse.Namespace) -> None:
     from football_edge.betting.ledger import read_log, settle, summary, write_log
 
     cfg = load_config(args.config)
+    gb = cfg.staking.get("golden_bar") or {}
+    if gb:
+        from football_edge.betting import golden
+
+        gpath = cfg.root / gb.get("log_path", "bets/golden_bar.csv")
+        if gpath.exists():
+            print(golden.scoreboard(golden.settle(gpath, load_matches(cfg))))
+    cs = cfg.staking.get("golden_cs") or {}
+    if cs:
+        from football_edge.betting import golden
+
+        cpath = cfg.root / cs.get("log_path", "bets/golden_cs.csv")
+        if cpath.exists():
+            print(golden.scoreboard(golden.settle(cpath, load_matches(cfg)), "Correct-score bar"))
     log_path = cfg.root / cfg.staking.get("log_path", "bets/log.csv")
     log = read_log(log_path)
     if log.empty:
-        raise SystemExit(f"no bets logged yet ({log_path})")
+        print(f"no bets logged yet ({log_path})")
+        return
     log, n = settle(log, load_matches(cfg))
     write_log(log, log_path)
     pending = int(log["result"].isna().sum())
@@ -708,6 +865,25 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("price-test", help="pre-registered best-price vs sharp-price test")
     p.add_argument("--seasons", type=int, nargs=2, default=[2019, 2025])
     p.set_defaults(func=_price_test)
+
+    p = sub.add_parser("early-totals-test", help="pre-registered model vs early O/U 2.5 prices")
+    p.set_defaults(func=_early_totals_test)
+
+    p = sub.add_parser("h2h-weight-test", help="pre-registered head-to-head weight test")
+    p.add_argument("--years", type=int, default=3)
+    p.set_defaults(func=_h2h_weight_test)
+
+    p = sub.add_parser("bar-test", help="pre-registered probability-bar test per market")
+    p.set_defaults(func=_bar_test)
+
+    p = sub.add_parser("window-search", help="pre-registered search of every probability window")
+    p.set_defaults(func=_window_search)
+
+    p = sub.add_parser("price", help="record your site's price for a golden pick")
+    p.add_argument("bar", choices=["score", "winner"], help="which golden bar")
+    p.add_argument("team", help="any part of either team's name, e.g. Lazio")
+    p.add_argument("odds", type=float)
+    p.set_defaults(func=_price)
 
     p = sub.add_parser("build-features", help="line-up and manager features from Transfermarkt")
     p.add_argument("--tm", required=True, type=Path, help="folder with the extracted dataset")

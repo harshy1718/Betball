@@ -154,15 +154,17 @@ def build_fact_sheet(
     history: pd.DataFrame,
     record: pd.DataFrame | None,
     names: dict[tuple[str, str], str] | None = None,
+    source: str = "model",
 ) -> FactSheet:
-    """`f`: one row of the forecast table (forecast + market_view + count_forecasts)."""
+    """`f`: one row of the forecast table (forecast + market_view + count_forecasts).
+    `source`: "model" (our own probabilities only) or "market" (the market's where known)."""
     names = names or {}
     lg, date = str(f["league"]), pd.Timestamp(f["date"])
     home = names.get((lg, f["home"]), str(f["home"]))
     away = names.get((lg, f["away"]), str(f["away"]))
 
     def prob(col: str) -> tuple[float, str]:
-        m = f.get("mkt_" + col[2:], np.nan)
+        m = f.get("mkt_" + col[2:], np.nan) if source == "market" else np.nan
         return (float(m), "market") if pd.notna(m) else (float(f[col]), "model")
 
     (ph, src), (pd_, _), (pa, _) = prob("p_h"), prob("p_d"), prob("p_a")
