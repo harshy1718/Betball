@@ -27,8 +27,11 @@ EPS = 1e-12
 
 
 def blend(p_market: Probs, p_model: Probs, beta: float) -> Probs:
-    if p_market.shape != p_model.shape or p_market.ndim != 2 or p_market.shape[1] != 3:
-        raise ValueError(f"shapes must match and be (n, 3): {p_market.shape} vs {p_model.shape}")
+    """Market moved towards the model by `beta` (0 = market, 1 = model). Written by Harsh."""
+    if p_market.shape != p_model.shape or p_market.ndim != 2 or p_market.shape[1] < 2:
+        raise ValueError(
+            f"shapes must match and be (n, k >= 2): {p_market.shape} vs {p_model.shape}"
+        )
     raw = p_market * ((p_model / p_market) ** beta)
     blend = raw / (raw.sum(axis=1, keepdims=True))
     return blend
@@ -66,6 +69,7 @@ class StackResult:
     log_loss_blend: float
     log_loss_model: float
     n: int
+    level: float = 0.95
     criteria: dict[str, bool] = field(default_factory=dict)
 
     @property
@@ -116,8 +120,10 @@ def stack_test(
     eval_seasons: list[int],
     n_boot: int = 2000,
     seed: int = 0,
+    level: float = 0.95,
 ) -> StackResult:
     """Run the pre-registered stack test. `frame` needs season, league, snapshot, outcome."""
+    lo_q, hi_q = (1 - level) / 2, 1 - (1 - level) / 2
     q_all, betas = walk_forward_blend(frame, p_market, p_model, eval_seasons)
     ev = frame["season"].isin(eval_seasons).to_numpy()
     f_ev = frame[ev].reset_index(drop=True)
@@ -144,9 +150,9 @@ def stack_test(
         eval_seasons=eval_seasons,
         beta_by_season=betas,
         delta=float(d.mean()),
-        delta_ci=(float(np.quantile(boot_delta, 0.025)), float(np.quantile(boot_delta, 0.975))),
+        delta_ci=(float(np.quantile(boot_delta, lo_q)), float(np.quantile(boot_delta, hi_q))),
         beta_pooled=beta_pooled,
-        beta_ci=(float(np.quantile(boot_beta, 0.025)), float(np.quantile(boot_beta, 0.975))),
+        beta_ci=(float(np.quantile(boot_beta, lo_q)), float(np.quantile(boot_beta, hi_q))),
         brier_market=brier_score(pm, y),
         brier_blend=brier_score(pq, y),
         delta_by_season=by_season,
@@ -155,6 +161,7 @@ def stack_test(
         log_loss_blend=log_loss(pq, y),
         log_loss_model=log_loss(pmod, y),
         n=int(ev.sum()),
+        level=level,
     )
     res.criteria = {
         "improvement >= 0.005": res.delta >= 0.005,
@@ -167,13 +174,13 @@ def stack_test(
     return res
 
 
-def render_report(res: StackResult, model: str) -> str:
+def render_report(res: StackResult, model: str, market: str = "1x2") -> str:
     tick = {True: "PASS", False: "FAIL"}
     lines = [
-        f"# Stack test: {model}",
+        f"# Stack test: {model}, market {market}",
         "",
         f"**Verdict: {'PASS' if res.passed else 'FAIL'}**  (all criteria must pass; "
-        "pre-registered in docs/adr/0003-kill-rule.md)",
+        "pre-registered in docs/adr/0003 and 0005)",
         "",
         f"Evaluation: seasons {res.eval_seasons[0]}-{res.eval_seasons[-1]}, {res.n} matches.",
         "",
@@ -184,9 +191,9 @@ def render_report(res: StackResult, model: str) -> str:
         f"| Blend (market + beta x model) | {res.log_loss_blend:.4f} |",
         "",
         f"Improvement of blend over market: {res.delta:+.5f} per match "
-        f"(95% interval {res.delta_ci[0]:+.5f} to {res.delta_ci[1]:+.5f})",
+        f"({res.level:.2%} interval {res.delta_ci[0]:+.5f} to {res.delta_ci[1]:+.5f})",
         f"Pooled beta: {res.beta_pooled:.3f} "
-        f"(95% interval {res.beta_ci[0]:.3f} to {res.beta_ci[1]:.3f})",
+        f"({res.level:.2%} interval {res.beta_ci[0]:.3f} to {res.beta_ci[1]:.3f})",
         f"Brier: market {res.brier_market:.4f}, blend {res.brier_blend:.4f}",
         "",
         "| Criterion | Result |",

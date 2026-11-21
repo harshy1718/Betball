@@ -21,3 +21,13 @@ _to_delete/
 raw data/
 # generated predictions (rebuild with `football-edge evaluate`); summaries are kept
 reports/**/predictions.parquet
+# personal betting records and cards (never committed)
+bets/
+reports/predict/
+# large outside datasets (download, never commit)
+external data/
+# simulation working files (rebuild with `football-edge simulate`)
+reports/simulation/grid_predictions_*.parquet
+reports/simulation/bets_*.csv
+# downloaded upcoming fixtures and odds (refreshed by `football-edge update`)
+data/upcoming/

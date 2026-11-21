@@ -1,83 +1,11 @@
 [
   {
-    "file": "E0_2025.csv",
-    "league": "E0",
-    "season": 2025,
-    "rows": 380,
-    "sha256": "3e3a8352f9ada6789c508d6ca184424421fed56a30400904a4a327c583407e62",
-    "original_name": "E0 (1).csv"
-  },
-  {
     "file": "E0_2015.csv",
     "league": "E0",
     "season": 2015,
     "rows": 380,
     "sha256": "bd3502a18c38a1597fd9af62e2366b4015006d3528dd4d18b311bd6237bbc085",
     "original_name": "E0 (10).csv"
-  },
-  {
-    "file": "E0_2026.csv",
-    "league": "E0",
-    "season": 2026,
-    "rows": 100,
-    "sha256": "d598a5f681e1a9a4acf9dad9fb203b68da6f67e2d195678dbe99e95fbba14593",
-    "original_name": "E0 (11).csv"
-  },
-  {
-    "file": "E0_2023.csv",
-    "league": "E0",
-    "season": 2023,
-    "rows": 380,
-    "sha256": "b2e057b0ed959f198b0f63d2391c01239f3608e6de5db68edab3f88e04d07ff3",
-    "original_name": "E0 (2).csv"
-  },
-  {
-    "file": "E0_2022.csv",
-    "league": "E0",
-    "season": 2022,
-    "rows": 380,
-    "sha256": "8442792d3b614c94ea3cf381bd2736805889cc1713169035368fff19c3d02380",
-    "original_name": "E0 (3).csv"
-  },
-  {
-    "file": "E0_2021.csv",
-    "league": "E0",
-    "season": 2021,
-    "rows": 380,
-    "sha256": "335afcbabeb2939fa10ab39ba3e8215072d0b577cb8d0705c1e44c56e934e703",
-    "original_name": "E0 (4).csv"
-  },
-  {
-    "file": "E0_2020.csv",
-    "league": "E0",
-    "season": 2020,
-    "rows": 380,
-    "sha256": "5afe63f69401457b8354eaacee24f9a3e520b3c3af6329564a9783e20d789c62",
-    "original_name": "E0 (5).csv"
-  },
-  {
-    "file": "E0_2019.csv",
-    "league": "E0",
-    "season": 2019,
-    "rows": 380,
-    "sha256": "100037618b94f94057400bb02bf6bac4ef74ddaa58cde4b38370839c39caee61",
-    "original_name": "E0 (6).csv"
-  },
-  {
-    "file": "E0_2018.csv",
-    "league": "E0",
-    "season": 2018,
-    "rows": 380,
-    "sha256": "7c096b3c2ecd54c6993d22eeea73450c2bde11e3457238b226b8f43c62dfc35e",
-    "original_name": "E0 (7).csv"
-  },
-  {
-    "file": "E0_2017.csv",
-    "league": "E0",
-    "season": 2017,
-    "rows": 380,
-    "sha256": "4f3389365ef3f7ac966764ed8ba67cf3b79f5aebed18dd224099c4b2c98bc67b",
-    "original_name": "E0 (8).csv"
   },
   {
     "file": "E0_2016.csv",
@@ -88,6 +16,62 @@
     "original_name": "E0 (9).csv"
   },
   {
+    "file": "E0_2017.csv",
+    "league": "E0",
+    "season": 2017,
+    "rows": 380,
+    "sha256": "4f3389365ef3f7ac966764ed8ba67cf3b79f5aebed18dd224099c4b2c98bc67b",
+    "original_name": "E0 (8).csv"
+  },
+  {
+    "file": "E0_2018.csv",
+    "league": "E0",
+    "season": 2018,
+    "rows": 380,
+    "sha256": "7c096b3c2ecd54c6993d22eeea73450c2bde11e3457238b226b8f43c62dfc35e",
+    "original_name": "E0 (7).csv"
+  },
+  {
+    "file": "E0_2019.csv",
+    "league": "E0",
+    "season": 2019,
+    "rows": 380,
+    "sha256": "100037618b94f94057400bb02bf6bac4ef74ddaa58cde4b38370839c39caee61",
+    "original_name": "E0 (6).csv"
+  },
+  {
+    "file": "E0_2020.csv",
+    "league": "E0",
+    "season": 2020,
+    "rows": 380,
+    "sha256": "5afe63f69401457b8354eaacee24f9a3e520b3c3af6329564a9783e20d789c62",
+    "original_name": "E0 (5).csv"
+  },
+  {
+    "file": "E0_2021.csv",
+    "league": "E0",
+    "season": 2021,
+    "rows": 380,
+    "sha256": "335afcbabeb2939fa10ab39ba3e8215072d0b577cb8d0705c1e44c56e934e703",
+    "original_name": "E0 (4).csv"
+  },
+  {
+    "file": "E0_2022.csv",
+    "league": "E0",
+    "season": 2022,
+    "rows": 380,
+    "sha256": "8442792d3b614c94ea3cf381bd2736805889cc1713169035368fff19c3d02380",
+    "original_name": "E0 (3).csv"
+  },
+  {
+    "file": "E0_2023.csv",
+    "league": "E0",
+    "season": 2023,
+    "rows": 380,
+    "sha256": "b2e057b0ed959f198b0f63d2391c01239f3608e6de5db68edab3f88e04d07ff3",
+    "original_name": "E0 (2).csv"
+  },
+  {
     "file": "E0_2024.csv",
     "league": "E0",
     "season": 2024,
@@ -96,12 +80,20 @@
     "original_name": "E0.csv"
   },
   {
-    "file": "I1_2025.csv",
-    "league": "I1",
+    "file": "E0_2025.csv",
+    "league": "E0",
     "season": 2025,
     "rows": 380,
-    "sha256": "709ae279617d16af226312bcceac941e71241745ddaf950bdac2b83afad4fcbb",
-    "original_name": "I1 (1).csv"
+    "sha256": "3e3a8352f9ada6789c508d6ca184424421fed56a30400904a4a327c583407e62",
+    "original_name": "E0 (1).csv"
+  },
+  {
+    "file": "E0_2026.csv",
+    "league": "E0",
+    "season": 2026,
+    "rows": 100,
+    "sha256": "d598a5f681e1a9a4acf9dad9fb203b68da6f67e2d195678dbe99e95fbba14593",
+    "original_name": "E0_2026_20261120.csv"
   },
   {
     "file": "I1_2015.csv",
@@ -112,60 +104,12 @@
     "original_name": "I1 (10).csv"
   },
   {
-    "file": "I1_2026.csv",
+    "file": "I1_2016.csv",
     "league": "I1",
-    "season": 2026,
-    "rows": 110,
-    "sha256": "91f517fedb41215a32e80faa8f4ec44e26d970e557c6c120a664686dbc4d22f0",
-    "original_name": "I1 (11).csv"
-  },
-  {
-    "file": "I1_2023.csv",
-    "league": "I1",
-    "season": 2023,
+    "season": 2016,
     "rows": 380,
-    "sha256": "343a89db026fe4204ebeabd663cdfee8d02a45457828fc1cb63fa630ca170723",
-    "original_name": "I1 (2).csv"
-  },
-  {
-    "file": "I1_2022.csv",
-    "league": "I1",
-    "season": 2022,
-    "rows": 380,
-    "sha256": "9960837f37a97ae700f876c87b85a8b7a2f5a5d05a53077830c21b9db8880c45",
-    "original_name": "I1 (3).csv"
-  },
-  {
-    "file": "I1_2021.csv",
-    "league": "I1",
-    "season": 2021,
-    "rows": 380,
-    "sha256": "6a9555d5a90e652a883fd2862a52545c06e264016cd770347c067a6d7c993170",
-    "original_name": "I1 (4).csv"
-  },
-  {
-    "file": "I1_2020.csv",
-    "league": "I1",
-    "season": 2020,
-    "rows": 380,
-    "sha256": "c09196fa18877547442807d375317299947abdd6d51a5e0df044cc6026e13f36",
-    "original_name": "I1 (5).csv"
-  },
-  {
-    "file": "I1_2019.csv",
-    "league": "I1",
-    "season": 2019,
-    "rows": 380,
-    "sha256": "f33233e0c428ebe4f7cb854c4a504e0b59c4e009ee8b679269486e26afdc575b",
-    "original_name": "I1 (6).csv"
-  },
-  {
-    "file": "I1_2018.csv",
-    "league": "I1",
-    "season": 2018,
-    "rows": 380,
-    "sha256": "2baea8a1fb31096960b5f5797d31dbb6b454eb41b00845e6b0b79feb82a0e3d0",
-    "original_name": "I1 (7).csv"
+    "sha256": "39eb2bc1812897e01c280b711b3b8f5c15d3dee111aa09fbdf2e4abd7404bca3",
+    "original_name": "I1 (9).csv"
   },
   {
     "file": "I1_2017.csv",
@@ -176,12 +120,52 @@
     "original_name": "I1 (8).csv"
   },
   {
-    "file": "I1_2016.csv",
+    "file": "I1_2018.csv",
     "league": "I1",
-    "season": 2016,
+    "season": 2018,
     "rows": 380,
-    "sha256": "39eb2bc1812897e01c280b711b3b8f5c15d3dee111aa09fbdf2e4abd7404bca3",
-    "original_name": "I1 (9).csv"
+    "sha256": "2baea8a1fb31096960b5f5797d31dbb6b454eb41b00845e6b0b79feb82a0e3d0",
+    "original_name": "I1 (7).csv"
+  },
+  {
+    "file": "I1_2019.csv",
+    "league": "I1",
+    "season": 2019,
+    "rows": 380,
+    "sha256": "f33233e0c428ebe4f7cb854c4a504e0b59c4e009ee8b679269486e26afdc575b",
+    "original_name": "I1 (6).csv"
+  },
+  {
+    "file": "I1_2020.csv",
+    "league": "I1",
+    "season": 2020,
+    "rows": 380,
+    "sha256": "c09196fa18877547442807d375317299947abdd6d51a5e0df044cc6026e13f36",
+    "original_name": "I1 (5).csv"
+  },
+  {
+    "file": "I1_2021.csv",
+    "league": "I1",
+    "season": 2021,
+    "rows": 380,
+    "sha256": "6a9555d5a90e652a883fd2862a52545c06e264016cd770347c067a6d7c993170",
+    "original_name": "I1 (4).csv"
+  },
+  {
+    "file": "I1_2022.csv",
+    "league": "I1",
+    "season": 2022,
+    "rows": 380,
+    "sha256": "9960837f37a97ae700f876c87b85a8b7a2f5a5d05a53077830c21b9db8880c45",
+    "original_name": "I1 (3).csv"
+  },
+  {
+    "file": "I1_2023.csv",
+    "league": "I1",
+    "season": 2023,
+    "rows": 380,
+    "sha256": "343a89db026fe4204ebeabd663cdfee8d02a45457828fc1cb63fa630ca170723",
+    "original_name": "I1 (2).csv"
   },
   {
     "file": "I1_2024.csv",
@@ -192,12 +176,20 @@
     "original_name": "I1.csv"
   },
   {
-    "file": "SP1_2025.csv",
-    "league": "SP1",
+    "file": "I1_2025.csv",
+    "league": "I1",
     "season": 2025,
     "rows": 380,
-    "sha256": "4ca2e285f3ee0702f6bc55fcaa4f5a15cb3aef6220735a1d15398131e21d63f5",
-    "original_name": "SP1 (1).csv"
+    "sha256": "709ae279617d16af226312bcceac941e71241745ddaf950bdac2b83afad4fcbb",
+    "original_name": "I1 (1).csv"
+  },
+  {
+    "file": "I1_2026.csv",
+    "league": "I1",
+    "season": 2026,
+    "rows": 110,
+    "sha256": "91f517fedb41215a32e80faa8f4ec44e26d970e557c6c120a664686dbc4d22f0",
+    "original_name": "I1_2026_20261120.csv"
   },
   {
     "file": "SP1_2015.csv",
@@ -208,60 +200,12 @@
     "original_name": "SP1 (10).csv"
   },
   {
-    "file": "SP1_2026.csv",
+    "file": "SP1_2016.csv",
     "league": "SP1",
-    "season": 2026,
-    "rows": 119,
-    "sha256": "b4c9a5cc1139f30dbd1026679c360de4626ce97fe64ae62ff1ff8ba3af0b7828",
-    "original_name": "SP1 (11).csv"
-  },
-  {
-    "file": "SP1_2023.csv",
-    "league": "SP1",
-    "season": 2023,
+    "season": 2016,
     "rows": 380,
-    "sha256": "5323f596c7ed318e4bce95557a369d809d98501fa499ea5f41350cd45cf3c7d9",
-    "original_name": "SP1 (2).csv"
-  },
-  {
-    "file": "SP1_2022.csv",
-    "league": "SP1",
-    "season": 2022,
-    "rows": 380,
-    "sha256": "53348112526b5165539df240be350083989bb258f30c0ff7cacbc0165ca7e4b3",
-    "original_name": "SP1 (3).csv"
-  },
-  {
-    "file": "SP1_2021.csv",
-    "league": "SP1",
-    "season": 2021,
-    "rows": 380,
-    "sha256": "2d9e619700712823d15716c07715133f8c3b1a09046930dcfc785a38633dee2e",
-    "original_name": "SP1 (4).csv"
-  },
-  {
-    "file": "SP1_2020.csv",
-    "league": "SP1",
-    "season": 2020,
-    "rows": 380,
-    "sha256": "b4137db923101f464e8403c4973acbfaf7d71724ce93b4336fad580e894d9591",
-    "original_name": "SP1 (5).csv"
-  },
-  {
-    "file": "SP1_2019.csv",
-    "league": "SP1",
-    "season": 2019,
-    "rows": 380,
-    "sha256": "a05d5d60eee0b1414c56d6d6817f860cdc620e206234069a1886c98a8cb318da",
-    "original_name": "SP1 (6).csv"
-  },
-  {
-    "file": "SP1_2018.csv",
-    "league": "SP1",
-    "season": 2018,
-    "rows": 380,
-    "sha256": "9b8cece2c85e90e382b30dc4fc5046534f12c6d2b0efa74cd7d1d52e90a0c201",
-    "original_name": "SP1 (7).csv"
+    "sha256": "6f5794a69decfb863ecb6a0b865ffd3241eb5028035d9f19c48a299c5baa8f9a",
+    "original_name": "SP1 (9).csv"
   },
   {
     "file": "SP1_2017.csv",
@@ -272,12 +216,52 @@
     "original_name": "SP1 (8).csv"
   },
   {
-    "file": "SP1_2016.csv",
+    "file": "SP1_2018.csv",
     "league": "SP1",
-    "season": 2016,
+    "season": 2018,
     "rows": 380,
-    "sha256": "6f5794a69decfb863ecb6a0b865ffd3241eb5028035d9f19c48a299c5baa8f9a",
-    "original_name": "SP1 (9).csv"
+    "sha256": "9b8cece2c85e90e382b30dc4fc5046534f12c6d2b0efa74cd7d1d52e90a0c201",
+    "original_name": "SP1 (7).csv"
+  },
+  {
+    "file": "SP1_2019.csv",
+    "league": "SP1",
+    "season": 2019,
+    "rows": 380,
+    "sha256": "a05d5d60eee0b1414c56d6d6817f860cdc620e206234069a1886c98a8cb318da",
+    "original_name": "SP1 (6).csv"
+  },
+  {
+    "file": "SP1_2020.csv",
+    "league": "SP1",
+    "season": 2020,
+    "rows": 380,
+    "sha256": "b4137db923101f464e8403c4973acbfaf7d71724ce93b4336fad580e894d9591",
+    "original_name": "SP1 (5).csv"
+  },
+  {
+    "file": "SP1_2021.csv",
+    "league": "SP1",
+    "season": 2021,
+    "rows": 380,
+    "sha256": "2d9e619700712823d15716c07715133f8c3b1a09046930dcfc785a38633dee2e",
+    "original_name": "SP1 (4).csv"
+  },
+  {
+    "file": "SP1_2022.csv",
+    "league": "SP1",
+    "season": 2022,
+    "rows": 380,
+    "sha256": "53348112526b5165539df240be350083989bb258f30c0ff7cacbc0165ca7e4b3",
+    "original_name": "SP1 (3).csv"
+  },
+  {
+    "file": "SP1_2023.csv",
+    "league": "SP1",
+    "season": 2023,
+    "rows": 380,
+    "sha256": "5323f596c7ed318e4bce95557a369d809d98501fa499ea5f41350cd45cf3c7d9",
+    "original_name": "SP1 (2).csv"
   },
   {
     "file": "SP1_2024.csv",
@@ -286,5 +270,21 @@
     "rows": 380,
     "sha256": "c086e96d6a53f6e6c0fce4e35db0d1728c773b4362323da0161a34769e315a36",
     "original_name": "SP1.csv"
+  },
+  {
+    "file": "SP1_2025.csv",
+    "league": "SP1",
+    "season": 2025,
+    "rows": 380,
+    "sha256": "4ca2e285f3ee0702f6bc55fcaa4f5a15cb3aef6220735a1d15398131e21d63f5",
+    "original_name": "SP1 (1).csv"
+  },
+  {
+    "file": "SP1_2026.csv",
+    "league": "SP1",
+    "season": 2026,
+    "rows": 119,
+    "sha256": "b4c9a5cc1139f30dbd1026679c360de4626ce97fe64ae62ff1ff8ba3af0b7828",
+    "original_name": "SP1_2026_20261120.csv"
   }
 ]

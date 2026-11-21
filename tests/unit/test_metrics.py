@@ -57,7 +57,7 @@ def test_log_loss_zero_probability_is_finite():
     "probs, outcomes",
     [
         (np.full((2, 3), 1 / 3), np.array([0])),  # length mismatch
-        (np.full((2, 2), 0.5), np.array([0, 1])),  # not 3 columns
+        (np.ones((2, 1)), np.array([0, 0])),  # one column: not a forecast
         (np.array([[0.5, 0.5, 0.5]]), np.array([0])),  # row sums to 1.5
         (np.array([[1.2, -0.1, -0.1]]), np.array([0])),  # outside [0, 1]
         (np.full((1, 3), 1 / 3), np.array([3])),  # outcome not 0/1/2
@@ -74,3 +74,10 @@ def test_log_loss_does_not_modify_inputs():
     y = np.array([0])
     log_loss(p, y)
     assert p.tolist() == [[1.0, 0.0, 0.0]]
+
+
+@needs_log_loss
+def test_log_loss_works_for_two_outcomes():
+    # Over/under: over 2.5 at 0.6 happened, then under at 0.3 happened.
+    p = np.array([[0.6, 0.4], [0.7, 0.3]])
+    assert log_loss(p, np.array([0, 1])) == pytest.approx(-(np.log(0.6) + np.log(0.3)) / 2)

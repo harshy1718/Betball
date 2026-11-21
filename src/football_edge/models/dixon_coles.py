@@ -22,6 +22,22 @@ be learned from a blend of actual goals and "shot-based goals" (shots on target
 x the league's goals-per-shot-on-target rate). 0 = goals only, 1 = shots only.
 Only past matches' shots are used; the predicted match's stats are never seen.
 
+Head-to-head (optional, `use_h2h`, ADR 0005): from up to 6 previous meetings of
+the two teams in the last 5 years, a goal-difference signal and a total-goals
+signal, each shrunk towards zero when there are few meetings. Two coefficients
+(gamma_gd, gamma_tot) learn how much they matter; with no real effect they stay
+near zero.
+
+Covariates (optional, `covariates`, ADR 0007): named groups of pre-kick-off match
+features from data/processed/features.parquet, each with coefficients learned in the fit:
+  * "lineup": today's XI value vs the team's usual XI (log ratio). Two coefficients:
+    log(lambda_home) += b_att * lineup_home - b_def * lineup_away, mirrored for away.
+  * "trust": the same, with the price-free coach's-trust version of XI strength.
+  * "manager": 1 in a team's first 6 league games under a new manager. One coefficient:
+    log(lambda_home) += k * (new_home - new_away), mirrored for away.
+Missing feature values count as 0 (usual XI, no change). Coefficients get the same ridge
+penalty as everything else, so with no real effect they stay near zero.
+
 Three things keep it honest and stable:
 1. Time decay: a match `t` days before the latest training date gets weight
    exp(-xi * t), so recent form counts more than results from years ago.
@@ -59,10 +75,52 @@ class DixonColesParams:
     no_crowd_end: str = "2021-05-31"
     min_promoted_matches: int = 5  # matches needed for a team-season to inform the prior
     shots_weight: float = 0.0  # 0 = learn from goals only, 1 = from shots on target only
+    use_h2h: bool = False  # add head-to-head features (ADR 0005)
+    h2h_max_meetings: int = 6
+    h2h_years: float = 5.0
+    h2h_shrink: float = 2.0  # pseudo-meetings of "no signal" added to the denominator
+    covariates: tuple[str, ...] = ()  # feature groups from COVARIATE_GROUPS (ADR 0007)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> DixonColesParams:
+        d = dict(d)
+        if "covariates" in d:
+            d["covariates"] = tuple(d["covariates"])
+            unknown = set(d["covariates"]) - set(COVARIATE_GROUPS)
+            if unknown:
+                raise ValueError(f"unknown covariate groups: {sorted(unknown)}")
         return cls(**d)
+
+
+# group -> (home column, away column, coefficient names)
+COVARIATE_GROUPS: dict[str, tuple[str, str, tuple[str, ...]]] = {
+    "lineup": ("lineup_home", "lineup_away", ("lineup_att", "lineup_def")),
+    "trust": ("trust_home", "trust_away", ("trust_att", "trust_def")),
+    "manager": ("new_mgr_home", "new_mgr_away", ("new_manager",)),
+}
+
+
+def covariate_design(df: pd.DataFrame, groups: tuple[str, ...]) -> tuple[FloatArr, FloatArr]:
+    """Design matrices (n, k) adding to log(lambda_home) and log(lambda_away)."""
+    hs: list[FloatArr] = []
+    as_: list[FloatArr] = []
+    for grp in groups:
+        h_col, a_col, _ = COVARIATE_GROUPS[grp]
+        missing = [c for c in (h_col, a_col) if c not in df.columns]
+        if missing:
+            raise KeyError(f"covariate group {grp!r} needs columns {missing} (build-features)")
+        h = np.nan_to_num(df[h_col].to_numpy(dtype=np.float64))
+        a = np.nan_to_num(df[a_col].to_numpy(dtype=np.float64))
+        if grp in ("lineup", "trust"):  # own XI on own goals, opponent XI on goals conceded
+            hs += [h, -a]
+            as_ += [a, -h]
+        else:
+            hs.append(h - a)
+            as_.append(a - h)
+    n = len(df)
+    xh = np.column_stack(hs) if hs else np.zeros((n, 0))
+    xa = np.column_stack(as_) if as_ else np.zeros((n, 0))
+    return xh, xa
 
 
 def tau(x: IntArr, y: IntArr, lam: FloatArr, mu: FloatArr, rho: float) -> FloatArr:
@@ -135,6 +193,67 @@ class DixonColes:
         ty = np.where(ok, (1 - sw) * yf + sw * np.nan_to_num(ast) * rate, yf)
         return tx, ty
 
+    # ------------------------------------------------------------ head-to-head
+    @staticmethod
+    def _pair(league: str, a: str, b: str) -> tuple[str, str, str]:
+        return (league, a, b) if a < b else (league, b, a)
+
+    def _h2h_from(
+        self,
+        meetings: list[tuple[pd.Timestamp, str, int, int]],
+        home: str,
+        date: pd.Timestamp,
+        league_avg: float,
+    ) -> tuple[float, float]:
+        """(gd, tot) signal for `home` from earlier meetings (date, home_team, hg, ag)."""
+        cutoff = date - pd.Timedelta(days=365.25 * self.params.h2h_years)
+        recent = [m for m in meetings if cutoff <= m[0] < date][-self.params.h2h_max_meetings :]
+        if not recent:
+            return 0.0, 0.0
+        gd = sum((hg - ag) if h == home else (ag - hg) for _, h, hg, ag in recent)
+        tot = sum(hg + ag - league_avg for _, _, hg, ag in recent)
+        k = len(recent) + self.params.h2h_shrink
+        return gd / k, tot / k
+
+    def _h2h_train(self, df: pd.DataFrame) -> tuple[FloatArr, FloatArr]:
+        """Features for each training match from earlier training matches only (meetings and
+        the league's average total so far). Also stores every training meeting, and the full
+        training league averages, for use at prediction time."""
+        hist: dict[tuple[str, str, str], list[tuple[pd.Timestamp, str, int, int]]] = {}
+        goals_so_far: dict[str, list[float]] = {}  # league -> [total goals, matches]
+        gd, tot = np.zeros(len(df)), np.zeros(len(df))
+        cols = df[["league", "date", "home", "away", "FTHG", "FTAG"]].to_numpy()
+        # Process one date at a time: features for a day's matches use only earlier days.
+        for _, idx in df.groupby("date", sort=True).indices.items():
+            for i in idx:
+                lg, date, h, a, _hg, _ag = cols[i]
+                past = hist.get(self._pair(lg, h, a), [])
+                acc = goals_so_far.get(lg, [0.0, 0.0])
+                if self.params.use_h2h and past:
+                    avg = acc[0] / acc[1] if acc[1] else 2.6
+                    gd[i], tot[i] = self._h2h_from(past, h, date, avg)
+            for i in idx:
+                lg, date, h, a, hg, ag = cols[i]
+                hist.setdefault(self._pair(lg, h, a), []).append((date, h, int(hg), int(ag)))
+                acc = goals_so_far.setdefault(lg, [0.0, 0.0])
+                acc[0] += float(hg + ag)
+                acc[1] += 1.0
+        self._h2h_hist = hist
+        self._league_avg_total = {lg: v[0] / v[1] for lg, v in goals_so_far.items()}
+        return gd, tot
+
+    def _h2h_test(self, test: pd.DataFrame) -> tuple[FloatArr, FloatArr]:
+        gd, tot = np.zeros(len(test)), np.zeros(len(test))
+        if not self.params.use_h2h:
+            return gd, tot
+        fallback = float(np.mean(list(self._league_avg_total.values())))
+        rows = test[["league", "date", "home", "away"]].itertuples(index=False, name=None)
+        for i, (lg, date, h, a) in enumerate(rows):
+            past = self._h2h_hist.get(self._pair(lg, h, a), [])
+            avg = self._league_avg_total.get(lg, fallback)
+            gd[i], tot[i] = self._h2h_from(past, h, date, avg)
+        return gd, tot
+
     # ---------------------------------------------------------------- fitting
     def fit(self, train: pd.DataFrame) -> None:
         p = self.params
@@ -170,6 +289,8 @@ class DixonColes:
         x = df["FTHG"].to_numpy(dtype=np.intp)
         y = df["FTAG"].to_numpy(dtype=np.intp)
         tx, ty = self._targets(df, x, y)
+        f_gd, f_tot = self._h2h_train(df)
+        xh, xa = covariate_design(df, p.covariates)
         nc = self._no_crowd(df["date"])
         age_days = (df["date"].max() - df["date"]).dt.days.to_numpy(dtype=float)
         w = np.exp(-p.xi * age_days)
@@ -177,7 +298,9 @@ class DixonColes:
         # Parameter vector layout.
         o_mu, o_h, o_c, o_rho = 0, n_l, 2 * n_l, 2 * n_l + 1
         o_att, o_def = 2 * n_l + 2, 2 * n_l + 2 + n_t
-        n_par = o_def + n_t
+        o_g = o_def + n_t  # gamma_gd, gamma_tot (head-to-head)
+        o_b = o_g + 2  # covariate coefficients
+        n_par = o_b + xh.shape[1]
 
         is00, is01 = (x == 0) & (y == 0), (x == 0) & (y == 1)
         is10, is11 = (x == 1) & (y == 0), (x == 1) & (y == 1)
@@ -185,9 +308,15 @@ class DixonColes:
         def objective(theta: FloatArr) -> tuple[float, FloatArr]:
             mu_l, hfa = theta[o_mu:o_h], theta[o_h:o_c]
             c, rho = theta[o_c], theta[o_rho]
-            att, dfn = theta[o_att:o_def], theta[o_def:]
+            att, dfn = theta[o_att:o_def], theta[o_def:o_g]
+            g_gd, g_tot = theta[o_g], theta[o_g + 1]
+            beta = theta[o_b:]
             eta_h = mu_l[lg_i] + hfa[lg_i] + c * nc + att[h_i] - dfn[a_i]
             eta_a = mu_l[lg_i] + att[a_i] - dfn[h_i]
+            eta_h = eta_h + g_gd * f_gd + g_tot * f_tot
+            eta_a = eta_a - g_gd * f_gd + g_tot * f_tot
+            eta_h = eta_h + xh @ beta
+            eta_a = eta_a + xa @ beta
             lam, mu = np.exp(eta_h), np.exp(eta_a)
             t = np.maximum(tau(x, y, lam, mu, rho), 1e-10)
 
@@ -216,17 +345,25 @@ class DixonColes:
             grad[o_att:o_def] = np.bincount(h_i, g_h, minlength=n_t) + np.bincount(
                 a_i, g_a, minlength=n_t
             )
-            grad[o_def:] = -np.bincount(a_i, g_h, minlength=n_t) - np.bincount(
+            grad[o_def:o_g] = -np.bincount(a_i, g_h, minlength=n_t) - np.bincount(
                 h_i, g_a, minlength=n_t
             )
+            grad[o_g] = np.sum((g_h - g_a) * f_gd)
+            grad[o_g + 1] = np.sum((g_h + g_a) * f_tot)
+            grad[o_b:] = xh.T @ g_h + xa.T @ g_a
 
             nll = -float(np.sum(w * ll))
             d_att, d_def = att - prior_att, dfn - prior_def
-            pen = p.ridge * (np.sum(d_att**2) + np.sum(d_def**2) + c**2)
+            pen = p.ridge * (
+                np.sum(d_att**2) + np.sum(d_def**2) + c**2 + g_gd**2 + g_tot**2 + beta @ beta
+            )
             g = -grad
             g[o_att:o_def] += 2 * p.ridge * d_att
-            g[o_def:] += 2 * p.ridge * d_def
+            g[o_def:o_g] += 2 * p.ridge * d_def
+            g[o_g] += 2 * p.ridge * g_gd
+            g[o_g + 1] += 2 * p.ridge * g_tot
             g[o_c] += 2 * p.ridge * c
+            g[o_b:] += 2 * p.ridge * beta
             return nll + pen, g
 
         theta0 = np.zeros(n_par)
@@ -234,7 +371,7 @@ class DixonColes:
         theta0[o_mu:o_h] = base
         theta0[o_h:o_c] = 0.25
         theta0[o_att:o_def] = prior_att
-        theta0[o_def:] = prior_def
+        theta0[o_def:o_g] = prior_def
         bounds: list[tuple[float | None, float | None]] = [(None, None)] * n_par
         bounds[o_rho] = (-0.2, 0.2)
         res = minimize(
@@ -243,7 +380,11 @@ class DixonColes:
         th = res.x
         self.mu_l, self.hfa = th[o_mu:o_h], th[o_h:o_c]
         self.c, self.rho = float(th[o_c]), float(th[o_rho])
-        self.attack, self.defence = th[o_att:o_def], th[o_def:]
+        self.attack, self.defence = th[o_att:o_def], th[o_def:o_g]
+        self.gamma_gd, self.gamma_tot = float(th[o_g]), float(th[o_g + 1])
+        self.beta = th[o_b:]
+        names = [n for g in p.covariates for n in COVARIATE_GROUPS[g][2]]
+        self.coefficients = dict(zip(names, (float(b) for b in self.beta), strict=True))
         self.converged = bool(res.success)
         self._fitted = True
 
@@ -259,6 +400,7 @@ class DixonColes:
         if not self._fitted:
             raise RuntimeError("fit() must be called before predicting")
         nc = self._no_crowd(test["date"])
+        f_gd, f_tot = self._h2h_test(test)
         lam, mu = np.empty(len(test)), np.empty(len(test))
         rows = test[["league", "season", "home", "away"]].itertuples(index=False, name=None)
         for k, (lg, season, home, away) in enumerate(rows):
@@ -267,8 +409,13 @@ class DixonColes:
             hfa = float(self.hfa[li]) if li is not None else float(np.mean(self.hfa))
             ah, dh = self._rating(lg, home, int(season))
             aa, da = self._rating(lg, away, int(season))
-            lam[k] = np.exp(base + hfa + self.c * nc[k] + ah - da)
-            mu[k] = np.exp(base + aa - dh)
+            h2h = self.gamma_gd * f_gd[k]
+            tot = self.gamma_tot * f_tot[k]
+            lam[k] = np.exp(base + hfa + self.c * nc[k] + ah - da + h2h + tot)
+            mu[k] = np.exp(base + aa - dh - h2h + tot)
+        if self.params.covariates:
+            xh, xa = covariate_design(test, self.params.covariates)
+            lam, mu = lam * np.exp(xh @ self.beta), mu * np.exp(xa @ self.beta)
         return lam, mu
 
     def score_matrix(self, lam: float, mu: float) -> FloatArr:
@@ -282,6 +429,18 @@ class DixonColes:
         m = np.clip(m, 0, None)
         out: FloatArr = m / m.sum()
         return out
+
+    def predict_extra(self, test: pd.DataFrame) -> dict[str, FloatArr]:
+        """Goals markets from the same score grid: over 2.5, both teams to score."""
+        lam, mu = self.expected_goals(test)
+        over, btts = np.empty(len(test)), np.empty(len(test))
+        g = np.arange(self.params.max_goals + 1)
+        total = g[:, None] + g[None, :]
+        for k in range(len(test)):
+            m = self.score_matrix(float(lam[k]), float(mu[k]))
+            over[k] = m[total >= 3].sum()
+            btts[k] = m[1:, 1:].sum()
+        return {"p_over25": over, "p_btts": btts, "exp_home": lam, "exp_away": mu}
 
     def predict_proba(self, test: pd.DataFrame) -> Probs:
         lam, mu = self.expected_goals(test)

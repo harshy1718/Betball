@@ -1,0 +1,67 @@
+{
+  "league": "SP1",
+  "date": "2026-11-21",
+  "home": "Real Madrid",
+  "away": "Celta Vigo",
+  "sections": {
+    "Match": [
+      "Real Madrid v Celta Vigo, La Liga, Saturday 21 November 2026"
+    ],
+    "Prediction": [
+      "Chance of Real Madrid win: 81%",
+      "Chance of a draw: 12%",
+      "Chance of Celta Vigo win: 7%",
+      "Most likely outcome: Real Madrid win (81%), confidence Low",
+      "Why that confidence: in the past, calls like this at 80 to 85% came true 85% of the time across 136 matches, which is too few matches to be sure",
+      "Most likely scores: 2-0 (13%), 1-0 (11%), 2-1 (9%)",
+      "Expected goals: Real Madrid 2.3, Celta Vigo 0.8"
+    ],
+    "Goals": [
+      "Chance of over 2.5 goals: 69%",
+      "Goals call: over 2.5 goals (69%), confidence High",
+      "Why that confidence: in the past, calls like this at 65 to 70% came true 68% of the time across 590 matches, so this level of prediction has been reliable",
+      "Chance both teams score: 48%"
+    ],
+    "Cards and corners": [
+      "Expected total cards in the match: 4.2",
+      "Chance of over 4.5 cards: 40%",
+      "Chance of a red card: 22%",
+      "Expected corners in the match: 8.9",
+      "Chance of over 9.5 corners: 41%"
+    ],
+    "Recent form": [
+      "Real Madrid last 5 matches (oldest first): W W W W W; 5 wins, 0 draws, 0 losses; scored 13, conceded 2",
+      "Real Madrid average cards per match (last 10): 2.4",
+      "Real Madrid average corners won per match (last 10): 6.3",
+      "Celta Vigo last 5 matches (oldest first): D W D L D; 1 win, 3 draws, 1 loss; scored 2, conceded 4",
+      "Celta Vigo average cards per match (last 10): 1.6",
+      "Celta Vigo average corners won per match (last 10): 3.0"
+    ],
+    "Head to head (most recent last)": [
+      "2023: Celta Vigo 0-1 Real Madrid",
+      "2024: Real Madrid 4-0 Celta Vigo",
+      "2024: Celta Vigo 1-2 Real Madrid",
+      "2025: Real Madrid 3-2 Celta Vigo",
+      "2025: Real Madrid 0-2 Celta Vigo",
+      "2026: Celta Vigo 1-2 Real Madrid",
+      "In the last 6 meetings: Real Madrid won 5, 0 draws, Celta Vigo won 1; both teams scored in 3; over 2.5 goals in 4"
+    ]
+  },
+  "data": {
+    "probabilities": {
+      "home": 0.8111685736488116,
+      "draw": 0.12252025331153925,
+      "away": 0.06631117303964915,
+      "over25": 0.6945701357466064,
+      "source": "market"
+    },
+    "pick": {
+      "result": "Real Madrid win",
+      "p": 0.8111685736488116,
+      "confidence": "Low",
+      "goals": "over 2.5 goals",
+      "goals_p": 0.6945701357466064,
+      "goals_confidence": "High"
+    }
+  }
+}

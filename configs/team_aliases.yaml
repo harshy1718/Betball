@@ -1,0 +1,89 @@
+# Map the names a betting site uses to the football-data.co.uk names in our history.
+# Matching is case-insensitive. Add a line whenever `predict` reports an unknown team.
+E0:
+  Manchester United: Man United
+  Man Utd: Man United
+  Manchester City: Man City
+  Newcastle United: Newcastle
+  Tottenham Hotspur: Tottenham
+  Spurs: Tottenham
+  Wolverhampton: Wolves
+  Wolverhampton Wanderers: Wolves
+  Nottingham Forest: Nott'm Forest
+  Nottm Forest: Nott'm Forest
+  Brighton & Hove Albion: Brighton
+  Brighton and Hove Albion: Brighton
+  West Ham United: West Ham
+  Leeds United: Leeds
+  Leicester City: Leicester
+  AFC Bournemouth: Bournemouth
+  Sheffield Utd: Sheffield United
+  West Bromwich Albion: West Brom
+  Ipswich Town: Ipswich
+  Luton Town: Luton
+  Norwich City: Norwich
+  Cardiff City: Cardiff
+  Swansea City: Swansea
+  Stoke City: Stoke
+  Hull City: Hull
+  Huddersfield Town: Huddersfield
+  Coventry City: Coventry
+I1:
+  AC Milan: Milan
+  Inter Milan: Inter
+  Internazionale: Inter
+  Hellas Verona: Verona
+  AS Roma: Roma
+  SS Lazio: Lazio
+  SSC Napoli: Napoli
+  Juventus FC: Juventus
+  Atalanta BC: Atalanta
+  ACF Fiorentina: Fiorentina
+  US Lecce: Lecce
+  Parma Calcio: Parma
+  Como 1907: Como
+  US Cremonese: Cremonese
+  Pisa SC: Pisa
+  FC Internazionale Milano: Inter
+  Internazionale Milano: Inter
+SP1:
+  Atletico Madrid: Ath Madrid
+  Atlético Madrid: Ath Madrid
+  Athletic Bilbao: Ath Bilbao
+  Athletic Club: Ath Bilbao
+  Real Sociedad: Sociedad
+  Rayo Vallecano: Vallecano
+  Real Betis: Betis
+  Celta Vigo: Celta
+  Deportivo Alaves: Alaves
+  Deportivo Alavés: Alaves
+  Alavés: Alaves
+  Espanyol: Espanol
+  RCD Espanyol: Espanol
+  RCD Mallorca: Mallorca
+  Real Oviedo: Oviedo
+  Sevilla FC: Sevilla
+  Valencia CF: Valencia
+  Villarreal CF: Villarreal
+  Getafe CF: Getafe
+  Girona FC: Girona
+  CA Osasuna: Osasuna
+  Elche CF: Elche
+  Levante UD: Levante
+  FC Barcelona: Barcelona
+  Real Valladolid: Valladolid
+  UD Las Palmas: Las Palmas
+  CD Leganes: Leganes
+  Leganés: Leganes
+  Cadiz CF: Cadiz
+  Cádiz: Cadiz
+  Almería: Almeria
+  Granada CF: Granada
+  Rayo Vallecano de Madrid: Vallecano
+  RCD Espanyol de Barcelona: Espanol
+  Racing Santander: Santander
+  Real Racing Club de Santander: Santander
+  Deportivo La Coruna: La Coruna
+  RC Deportivo La Coruna: La Coruna
+  Sporting Gijon: Sp Gijon
+  Real Sporting de Gijon: Sp Gijon

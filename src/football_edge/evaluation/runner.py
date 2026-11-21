@@ -15,7 +15,23 @@ from football_edge.models.base import Model, outcome_index
 log = logging.getLogger(__name__)
 
 # Everything known only after kick-off; removed from test rows before predicting.
-_RESULT_COLS = ["FTHG", "FTAG", "FTR", "HTHG", "HTAG", "HS", "AS", "HST", "AST"]
+_RESULT_COLS = [
+    "FTHG",
+    "FTAG",
+    "FTR",
+    "HTHG",
+    "HTAG",
+    "HS",
+    "AS",
+    "HST",
+    "AST",
+    "HC",
+    "AC",
+    "HY",
+    "AY",
+    "HR",
+    "AR",
+]
 
 
 def walk_forward(
@@ -28,8 +44,11 @@ def walk_forward(
         model.fit(matches.iloc[fold.train_idx])
         test = matches.iloc[fold.test_idx]
         # Remove results before predicting, so a model physically cannot peek.
-        probs = model.predict_proba(test.drop(columns=_RESULT_COLS, errors="ignore"))
+        hidden = test.drop(columns=_RESULT_COLS, errors="ignore")
+        probs = model.predict_proba(hidden)
         _check_probs(probs, len(test), model.name)
+        extra_fn = getattr(model, "predict_extra", None)
+        extra = extra_fn(hidden) if extra_fn is not None else {}
         parts.append(
             pd.DataFrame(
                 {
@@ -44,6 +63,10 @@ def walk_forward(
                     "p_h": probs[:, 0],
                     "p_d": probs[:, 1],
                     "p_a": probs[:, 2],
+                    # actual goals, for scoring goals markets (never shown to the model)
+                    "goals_home": test["FTHG"].to_numpy(),
+                    "goals_away": test["FTAG"].to_numpy(),
+                    **extra,
                 }
             )
         )
@@ -65,7 +88,18 @@ def summarise(preds: pd.DataFrame) -> pd.DataFrame:
     def score(g: pd.DataFrame) -> pd.Series:
         p = g[["p_h", "p_d", "p_a"]].to_numpy()
         y = g["outcome"].to_numpy()
-        return pd.Series({"n": len(g), "log_loss": log_loss(p, y), "brier": brier_score(p, y)})
+        row = {"n": len(g), "log_loss": log_loss(p, y), "brier": brier_score(p, y)}
+        goals = g["goals_home"] + g["goals_away"]
+        if "p_over25" in g:  # goals markets, when the model provides them
+            over = g["p_over25"].to_numpy()
+            row["ou25_log_loss"] = log_loss(
+                np.c_[over, 1 - over], np.asarray(goals < 3, dtype=np.intp)
+            )
+        if "p_btts" in g:
+            btts = g["p_btts"].to_numpy()
+            yes = ((g["goals_home"] > 0) & (g["goals_away"] > 0)).to_numpy()
+            row["btts_log_loss"] = log_loss(np.c_[btts, 1 - btts], (~yes).astype(np.intp))
+        return pd.Series(row)
 
     rows = [score(preds).rename("all")]
     for col in ("league", "season"):

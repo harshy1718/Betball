@@ -1,0 +1,19 @@
+{
+  "model": "dixon_coles_trust",
+  "params": {
+    "xi": 0.0025,
+    "ridge": 1.0,
+    "max_goals": 10,
+    "no_crowd_start": "2020-06-01",
+    "no_crowd_end": "2021-05-31",
+    "min_promoted_matches": 5,
+    "shots_weight": 0.25,
+    "covariates": [
+      "trust"
+    ]
+  },
+  "created_utc": "2026-11-20T15:08:25+00:00",
+  "git_sha": "unknown",
+  "data_sha256": "139adfc8dd064605a84c92d9b10cbbbfe73e25b59a2366836cdca85b3d66dd3d",
+  "n_predictions": 9120
+}

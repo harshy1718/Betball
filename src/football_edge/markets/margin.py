@@ -1,6 +1,6 @@
 """Turn bookmaker decimal odds into fair probabilities.
 
-Arrays follow the project convention: shape (n, 3), columns home/draw/away.
+Shape (n, k): one row per match, one column per outcome (3 for 1X2, 2 for over/under).
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ Probs = npt.NDArray[np.float64]
 
 
 def _check(odds: Odds) -> None:
-    """Raise ValueError unless odds are an (n, 3) table of real prices above 1.0."""
-    if odds.ndim != 2 or odds.shape[1] != 3:
-        raise ValueError(f"odds must have shape (n, 3), got {odds.shape}")
+    """Raise ValueError unless odds are an (n, k >= 2) table of real prices above 1.0."""
+    if odds.ndim != 2 or odds.shape[1] < 2:
+        raise ValueError(f"odds must have shape (n, k) with k >= 2, got {odds.shape}")
     if np.isnan(odds).any():
         raise ValueError("odds contain missing prices")
     if (odds <= 1).any():

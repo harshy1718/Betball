@@ -5,7 +5,22 @@ from __future__ import annotations
 import pandas as pd
 
 REQUIRED = ("league", "season", "date", "home", "away", "FTHG", "FTAG", "FTR")
-ODDS = ("close_h", "close_d", "close_a", "pre_h", "pre_d", "pre_a")
+ODDS = (
+    "close_h",
+    "close_d",
+    "close_a",
+    "pre_h",
+    "pre_d",
+    "pre_a",
+    "max_h",
+    "max_d",
+    "max_a",
+    "maxc_h",
+    "maxc_d",
+    "maxc_a",
+    "ou_close_over",
+    "ou_close_under",
+)
 
 
 class DataValidationError(ValueError):

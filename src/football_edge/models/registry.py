@@ -19,7 +19,12 @@ def model_factory(name: str, params: dict[str, Any] | None = None) -> Callable[[
     if name == "elo":
         elo_params = EloParams.from_dict(params)
         return lambda: Elo(elo_params)
-    if name == "dixon_coles":
+    if name.startswith("dixon_coles"):
         dc_params = DixonColesParams.from_dict(params)
-        return lambda: DixonColes(dc_params)
-    raise ValueError(f"unknown model: {name!r} (available: team_blind, elo, dixon_coles)")
+        return lambda: _named(DixonColes(dc_params), name)
+    raise ValueError(f"unknown model: {name!r} (available: team_blind, elo, dixon_coles*)")
+
+
+def _named(model: DixonColes, name: str) -> DixonColes:
+    model.name = name
+    return model

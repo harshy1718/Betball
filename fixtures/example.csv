@@ -1,0 +1,5 @@
+league,date,home,away,odds_h,odds_d,odds_a,odds_over25,odds_under25,odds_btts_yes,odds_btts_no,ref_h,ref_d,ref_a,ref_over25,ref_under25
+EPL,22/11/2026,Arsenal,Manchester United,1.55,4.2,5.5,1.65,2.2,1.75,2.0,1.60,4.40,5.90,1.72,2.22
+EPL,22/11/2026,Man City,Leeds United,1.30,5.5,9.0,1.45,2.7,1.95,1.80,,,,,
+La Liga,23/11/2026,Real Madrid,Getafe,1.28,5.6,10.0,1.70,2.10,2.20,1.62,1.31,5.9,11.5,1.74,2.18
+Serie A,23/11/2026,Inter,Lecce,,,,,,,,,,,,

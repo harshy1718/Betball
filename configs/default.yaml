@@ -12,6 +12,15 @@ odds:
   pre_priority:
     - {name: PS,   cols: [PSH, PSD, PSA]}
     - {name: B365, cols: [B365H, B365D, B365A]}
+  # Best price across bookmakers (football-data "Max" columns; ADR 0004).
+  max_pre_priority:
+    - {name: Max,  cols: [MaxH, MaxD, MaxA]}
+  max_close_priority:
+    - {name: MaxC, cols: [MaxCH, MaxCD, MaxCA]}
+  # Closing over/under 2.5 goals: [over, under] (ADR 0005).
+  ou_close_priority:
+    - {name: PS,  cols: ["PC>2.5", "PC<2.5"]}
+    - {name: Avg, cols: ["AvgC>2.5", "AvgC<2.5"]}
 evaluation:
   first_test_season: 2018          # season = start year (2018 = 2018/19)
   last_test_season: 2025
@@ -33,6 +42,45 @@ models:
     no_crowd_end: "2021-05-31"
     min_promoted_matches: 5
     shots_weight: 0.25      # 0 = goals only, 1 = shots on target only; tuned on 2018-19, locked
+  dixon_coles_h2h:          # dixon_coles + head-to-head (ADR 0005); nothing retuned
+    xi: 0.0025              # time decay per day (half-life ~9 months); tuned on 2018-19, locked
+    ridge: 1.0              # pull of team ratings towards their prior; tuned on 2018-19, locked
+    max_goals: 10
+    no_crowd_start: "2020-06-01"
+    no_crowd_end: "2021-05-31"
+    min_promoted_matches: 5
+    shots_weight: 0.25      # 0 = goals only, 1 = shots on target only; tuned on 2018-19, locked
+    use_h2h: true
+    h2h_max_meetings: 6
+    h2h_years: 5.0
+    h2h_shrink: 2.0
+  dixon_coles_lineup:       # dixon_coles + line-up strength (ADR 0007); nothing retuned
+    xi: 0.0025
+    ridge: 1.0
+    max_goals: 10
+    no_crowd_start: "2020-06-01"
+    no_crowd_end: "2021-05-31"
+    min_promoted_matches: 5
+    shots_weight: 0.25
+    covariates: [lineup]
+  dixon_coles_trust:        # dixon_coles + coach's-trust XI strength (ADR 0007 amendment)
+    xi: 0.0025
+    ridge: 1.0
+    max_goals: 10
+    no_crowd_start: "2020-06-01"
+    no_crowd_end: "2021-05-31"
+    min_promoted_matches: 5
+    shots_weight: 0.25
+    covariates: [trust]
+  dixon_coles_manager:      # dixon_coles + new-manager flag (ADR 0007); nothing retuned
+    xi: 0.0025
+    ridge: 1.0
+    max_goals: 10
+    no_crowd_start: "2020-06-01"
+    no_crowd_end: "2021-05-31"
+    min_promoted_matches: 5
+    shots_weight: 0.25
+    covariates: [manager]
 tuning:
   # Settings are chosen on these test seasons only, then locked in models: above.
   # Seasons after them are never used for choosing, so their results stay honest.
@@ -42,3 +90,49 @@ tuning:
       xi: [0.0019, 0.0025, 0.0035]
       ridge: [1.0, 2.0, 4.0]
       shots_weight: [0.0, 0.25, 0.5, 0.75, 1.0]
+predict:
+  model: dixon_coles        # the evaluated model; predict uses its locked settings unchanged
+  odds_source: Avg          # for football-data fixtures.csv: Avg, Max, B365 or PS prices
+  max_data_age_days: 10     # warn when our latest result is older than this before kick-off
+  aliases: configs/team_aliases.yaml
+staking:                    # docs/adr/0006-staking-policy.md
+  monthly_budget: 10000     # assumption until Harsh sets his own
+  currency: INR
+  # [min probability, share of monthly budget] for tiers low, normal, high.
+  # Two-way markets start higher: 55% on over/under is barely better than a coin.
+  tiers:
+    1x2:  [[0.50, 0.01], [0.60, 0.02], [0.70, 0.03]]
+    ou25: [[0.58, 0.01], [0.65, 0.02], [0.72, 0.03]]
+    btts: [[0.58, 0.01], [0.65, 0.02], [0.72, 0.03]]
+  price_tolerance: 0.06     # skip if expected loss per unit staked is worse than 6%
+  max_match_fraction: 0.04  # all markets on one match together: at most 4% of budget
+  stop_loss_fraction: 0.30  # month down 30% of budget -> no more stakes that month
+  stake_rounding: 10
+  confidence: market        # tiers use the margin-free market probability when prices exist
+  disagree_at: 0.08         # flag picks where model and market differ by 8+ points
+  doubles: {max_count: 2, stake_fraction: 0.01, min_leg_tier: high}
+  log_path: bets/log.csv
+news:                       # docs/news.md; any OpenAI-compatible chat server
+  base_url: http://localhost:11434/v1   # Ollama on this PC
+  model: qwen2.5:7b-instruct
+  api_key_env: ""           # e.g. HF_TOKEN for a hosted endpoint; the key stays in the environment
+  timeout_s: 120
+  max_retries: 1
+writer:                     # video scripts (docs/content.md); same Ollama server as news
+  api: ollama               # Ollama's own API: lets us switch Gemma 4's thinking off
+  base_url: http://localhost:11434
+  think: false              # thinking used the whole answer budget on a CPU -> empty scripts
+  num_ctx: 8192             # room for instructions + example + fact sheet + answer
+  num_predict: 800          # a 150-word script is ~250 tokens
+  model: gemma4:12b         # set to the exact tag `ollama list` shows on your PC
+  timeout_s: 900            # CPU-only: a script can take a few minutes
+  max_retries: 2            # rewrites allowed when a script fails the checks
+  temperature: 0.8          # some variety for natural prose; facts are enforced by the checks
+content:
+  big_clubs:                # matches involving these count as "searched for" (picker rule 3)
+    E0: [Arsenal, Chelsea, Liverpool, Man City, Man United, Tottenham, Newcastle, Aston Villa]
+    I1: [Inter, Milan, Juventus, Napoli, Roma, Lazio, Atalanta]
+    SP1: [Real Madrid, Barcelona, Ath Madrid, Ath Bilbao, Sevilla, Betis, Sociedad, Villarreal]
+  videos_per_round: 3
+  display_names:            # how the presenter says a club, where the automatic choice is wrong
+    I1: {Milan: AC Milan}

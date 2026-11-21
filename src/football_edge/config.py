@@ -13,7 +13,7 @@ import yaml
 @dataclass(frozen=True)
 class OddsSource:
     name: str
-    cols: tuple[str, str, str]
+    cols: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -33,9 +33,17 @@ class Config:
     leagues: tuple[str, ...]
     closing_priority: tuple[OddsSource, ...]
     pre_priority: tuple[OddsSource, ...]
+    max_pre_priority: tuple[OddsSource, ...]
+    max_close_priority: tuple[OddsSource, ...]
+    ou_close_priority: tuple[OddsSource, ...]
     evaluation: EvaluationConfig
     models: dict[str, dict[str, Any]]
     tuning: dict[str, dict[str, Any]]
+    predict: dict[str, Any]
+    staking: dict[str, Any]
+    news: dict[str, Any]
+    writer: dict[str, Any]
+    content: dict[str, Any]
 
     @property
     def matches_path(self) -> Path:
@@ -43,7 +51,7 @@ class Config:
 
 
 def _sources(items: list[dict[str, Any]]) -> tuple[OddsSource, ...]:
-    return tuple(OddsSource(i["name"], (i["cols"][0], i["cols"][1], i["cols"][2])) for i in items)
+    return tuple(OddsSource(i["name"], tuple(i["cols"])) for i in items)
 
 
 def load_config(path: str | Path | None = None, root: Path | None = None) -> Config:
@@ -59,6 +67,9 @@ def load_config(path: str | Path | None = None, root: Path | None = None) -> Con
         leagues=tuple(raw["leagues"]),
         closing_priority=_sources(raw["odds"]["closing_priority"]),
         pre_priority=_sources(raw["odds"]["pre_priority"]),
+        max_pre_priority=_sources(raw["odds"].get("max_pre_priority", [])),
+        max_close_priority=_sources(raw["odds"].get("max_close_priority", [])),
+        ou_close_priority=_sources(raw["odds"].get("ou_close_priority", [])),
         evaluation=EvaluationConfig(
             ev["first_test_season"],
             ev["last_test_season"],
@@ -67,4 +78,9 @@ def load_config(path: str | Path | None = None, root: Path | None = None) -> Con
         ),
         models={name: dict(params or {}) for name, params in raw.get("models", {}).items()},
         tuning={name: dict(t or {}) for name, t in raw.get("tuning", {}).items()},
+        predict=dict(raw.get("predict") or {}),
+        staking=dict(raw.get("staking") or {}),
+        news=dict(raw.get("news") or {}),
+        writer=dict(raw.get("writer") or {}),
+        content=dict(raw.get("content") or {}),
     )

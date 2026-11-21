@@ -1,0 +1,101 @@
+league,team,club_id,share,n
+E0,Chelsea,631,0.802,521
+E0,Everton,29,0.844,495
+E0,Man United,985,0.843,496
+E0,Arsenal,11,0.820,510
+E0,Tottenham,148,0.824,507
+E0,West Ham,379,0.820,510
+E0,Crystal Palace,873,0.783,534
+E0,Man City,281,0.857,488
+E0,Liverpool,31,0.810,516
+I1,Lazio,398,0.838,499
+I1,Fiorentina,430,0.836,500
+I1,Inter,46,0.809,517
+I1,Juventus,506,0.818,511
+SP1,Betis,150,0.850,492
+SP1,Villarreal,1050,0.843,496
+I1,Bologna,1025,0.839,498
+I1,Milan,5,0.839,498
+SP1,Barcelona,131,0.887,471
+SP1,Celta,940,0.836,500
+SP1,Real Madrid,418,0.844,495
+SP1,Sociedad,681,0.829,504
+I1,Atalanta,800,0.833,502
+I1,Napoli,6195,0.833,502
+I1,Torino,416,0.805,519
+I1,Udinese,410,0.795,526
+SP1,Sevilla,368,0.843,496
+SP1,Valencia,1049,0.820,510
+SP1,Ath Madrid,13,0.829,503
+SP1,Ath Bilbao,621,0.832,501
+I1,Roma,12,0.808,516
+E0,Newcastle,762,0.800,475
+I1,Sassuolo,6574,0.805,472
+I1,Genoa,252,0.802,474
+SP1,Getafe,3709,0.844,450
+E0,Bournemouth,989,0.797,429
+E0,Leicester,1003,0.805,425
+E0,Southampton,180,0.828,413
+SP1,Espanol,714,0.872,392
+I1,Cagliari,1390,0.810,422
+SP1,Alaves,1108,0.847,404
+E0,Brighton,1237,0.776,441
+I1,Verona,276,0.820,416
+E0,Aston Villa,405,0.804,378
+I1,Sampdoria,1038,0.826,368
+E0,Burnley,1132,0.815,373
+SP1,Osasuna,331,0.842,361
+E0,Wolves,543,0.786,387
+SP1,Vallecano,367,0.821,324
+I1,Empoli,749,0.834,319
+SP1,Levante,3368,0.864,308
+E0,Watford,1010,0.794,287
+SP1,Eibar,1533,0.851,268
+SP1,Girona,12321,0.844,270
+E0,Fulham,931,0.776,294
+SP1,Mallorca,237,0.832,274
+SP1,Granada,16795,0.841,270
+SP1,Las Palmas,472,0.872,218
+SP1,Leganes,1244,0.841,226
+I1,Parma,130,0.841,226
+SP1,Valladolid,366,0.852,223
+I1,Lecce,1005,0.826,230
+E0,Brentford,1148,0.792,240
+E0,West Brom,984,0.764,199
+I1,Chievo,862,0.796,191
+SP1,Cadiz,2687,0.844,180
+E0,Leeds,399,0.813,187
+E0,Nott'm Forest,703,0.804,189
+SP1,Elche,1531,0.848,178
+E0,Norwich,1123,0.755,151
+E0,Stoke,512,0.776,147
+E0,Sunderland,289,0.781,146
+E0,Swansea,2288,0.770,148
+SP1,Malaga,1084,0.857,133
+SP1,La Coruna,897,0.864,132
+I1,Frosinone,8970,0.826,138
+I1,Crotone,4083,0.770,148
+I1,Spal,2722,0.765,149
+E0,Sheffield United,350,0.832,137
+I1,Spezia,3522,0.898,127
+I1,Salernitana,380,0.844,135
+I1,Monza,2919,0.857,133
+I1,Palermo,458,0.704,108
+SP1,Sp Gijon,2448,0.844,90
+E0,Huddersfield,1110,0.792,96
+I1,Benevento,4171,0.826,92
+SP1,Huesca,5358,0.835,91
+I1,Venezia,607,0.835,91
+SP1,Almeria,3302,0.864,88
+I1,Cremonese,2239,0.864,88
+I1,Como,1047,0.864,88
+I1,Carpi,4102,0.691,55
+E0,Hull,3008,0.809,47
+E0,Middlesbrough,641,0.745,51
+I1,Pescara,2921,0.844,45
+E0,Cardiff,603,0.760,50
+I1,Brescia,19,0.905,42
+E0,Luton,1031,0.905,42
+E0,Ipswich,677,0.809,47
+SP1,Oviedo,2497,0.792,48
+I1,Pisa,4172,0.844,45
