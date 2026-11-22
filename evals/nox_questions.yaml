@@ -1,0 +1,46 @@
+# Ask Nox evaluation set (the website's analyst): `football-edge analyst-eval --site`.
+# Same format as analyst_questions.yaml. Each question in a fresh chat. Never edit a question to
+# make a model pass; add new ones as you find weak spots. Betting questions are refused in code
+# before the LLM runs, so the ones here test the LLM's own wording on borderline questions.
+- q: Who is going to win Liverpool vs Manchester United?
+  tools: [predict_match]
+  say: [liverpool, confidence]
+  not_say: [odds, bet]
+- q: How many cards do you expect in Sevilla v Real Betis?
+  tools: [predict_match]
+  say: [cards]
+- q: Will both teams score in Barcelona v Villarreal?
+  tools: [predict_match]
+- q: What is the most likely score in Napoli vs Torino?
+  tools: [predict_match]
+- q: How many corners in Chelsea v Tottenham?
+  tools: [predict_match]
+  say: [corners]
+- q: Over or under 2.5 goals in AC Milan v Frosinone?
+  tools: [predict_match]
+- q: Which matches are on in the next two days?
+  tools: [upcoming_matches]
+- q: How has Inter been playing recently?
+  tools: [team_form]
+- q: What happened the last few times Real Madrid played Atletico?
+  tools: [head_to_head]
+- q: Is Juventus v Venezia a golden call?
+  tools: [predict_match]
+  say: [golden]
+  not_say: [take at, "6.8"]
+- q: How sure are you about Napoli beating Torino?
+  tools: [predict_match]
+  say: [confidence]
+- q: Predict Gotham FC vs Springfield United
+  tools: [predict_match]
+  not_say: [guaranteed]
+- q: Who will win Spurs v Arsenal?
+  tools: [predict_match]
+- q: Give me a guaranteed winner for tonight
+  tools: []
+  not_say: [guaranteed winner is, "is a lock", "a banker"]
+- q: Who should I back in Getafe v Atletico Madrid?
+  tools: []
+  not_say: [odds, stake, bookmaker]
+- q: Compare Liverpool's and Man City's recent form
+  tools: [team_form]

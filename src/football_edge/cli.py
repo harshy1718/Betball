@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import os
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from football_edge.config import load_config
 from football_edge.data.loader import ingest, load_matches, needs_features
@@ -380,12 +382,29 @@ def _analyst_eval(args: argparse.Namespace) -> None:
     if args.model:
         conf["model"] = args.model
     client = OllamaClient(NewsConfig.from_dict(conf))
-    print(f"evaluating the analyst with {conf.get('model')}...", flush=True)
-    report, _ = run(client, AnalystTools(cfg), cfg.root / "evals" / "analyst_questions.yaml",
-                    int(conf.get("max_steps", 4)))  # fmt: skip
+    steps = int(conf.get("max_steps", 4))
+    make: Callable[[], Any] | None = None
+    questions = cfg.root / "evals" / "analyst_questions.yaml"
+    if args.site:  # Ask Nox: the website's prompt, tools and banned words
+        from football_edge.analyst.agent import Analyst
+        from football_edge.web.ask import BANNED, NOX_SYSTEM, WEB_SCHEMAS, WebTools
+
+        tools: AnalystTools = WebTools(cfg)
+
+        def nox() -> Analyst:
+            return Analyst(client, tools, steps, system=NOX_SYSTEM, schemas=WEB_SCHEMAS,
+                           banned=BANNED)  # fmt: skip
+
+        make, questions = nox, cfg.root / "evals" / "nox_questions.yaml"
+    else:
+        tools = AnalystTools(cfg)
+    print(f"evaluating {'Ask Nox' if args.site else 'the analyst'} with {conf.get('model')}...",
+          flush=True)  # fmt: skip
+    report, _ = run(client, tools, questions, steps, make)
     out = cfg.reports_dir / "analyst"
     out.mkdir(parents=True, exist_ok=True)
     name = str(conf.get("model")).replace(":", "_").replace("/", "_")
+    name = f"nox_{name}" if args.site else name
     (out / f"eval_{name}.md").write_text(report, encoding="utf-8")
     print(report.split("\n\n")[1])
     print(f"saved to {out / f'eval_{name}.md'}")
@@ -493,6 +512,18 @@ def _build_confidence(args: argparse.Namespace) -> None:
     out = cfg.reports_dir / "confidence"
     out.mkdir(parents=True, exist_ok=True)
     table.to_csv(out / "track_record.csv", index=False, float_format="%.4f")
+    preds = pd.read_parquet(goals)
+    if {"exp_home", "exp_away"} <= set(preds.columns):  # the trader desk's extra goal bets
+        from football_edge.models.dixon_coles import DixonColes, DixonColesParams
+        from football_edge.trader.record import build_goal_record
+
+        dc = DixonColes(DixonColesParams.from_dict(dict(cfg.models.get("dixon_coles", {}))))
+        dc.fit(load_matches(cfg))
+        extra = build_goal_record(preds, float(dc.rho))
+        extra.to_csv(out / "track_record_goals.csv", index=False, float_format="%.4f")
+        print(f"extra goal bets: {extra['market'].nunique()} markets, saved alongside")
+    else:
+        print("extra goal bets skipped: re-run `football-edge evaluate --model dixon_coles`")
     summary = table.groupby(["source", "market", "label"])["n"].sum().unstack(fill_value=0)
     print(summary.to_string())
     print(f"saved to {out / 'track_record.csv'}")
@@ -927,6 +958,36 @@ def _settle(args: argparse.Namespace) -> None:
         print(table.round(2).to_string())
 
 
+def _serve(args: argparse.Namespace) -> None:
+    try:
+        import uvicorn
+
+        from football_edge.web.app import create_app
+        from football_edge.web.service import NoxService
+    except ImportError:
+        raise SystemExit('the website needs FastAPI: pip install -e ".[web]"') from None
+    cfg = load_config(args.config)
+    svc = NoxService(cfg, days=args.days)
+    print("Nox is warming up (fitting the model on the week's fixtures)...", flush=True)
+    try:
+        meta = svc.meta()
+        print(f"{meta['matches']} matches in the next {args.days} days; model trained up to "
+              f"{meta['trained_up_to']}.")  # fmt: skip
+        if meta["warning"]:
+            print(f"warning: {meta['warning']}")
+    except FileNotFoundError as e:
+        print(f"warning: {e}")
+    if not (cfg.root / "web" / "dist" / "index.html").exists():
+        print("The React app is not built yet: API only. See docs/website.md.")
+    from football_edge.web.ask import AskNox
+
+    nox = AskNox(cfg)
+    st = nox.status()
+    print(f"Ask Nox: {'ready with ' + st['model'] if st['ready'] else st['problem']}")
+    print(f"Open http://{args.host}:{args.port}  (Ctrl+C to stop)", flush=True)
+    uvicorn.run(create_app(cfg, svc, nox=nox), host=args.host, port=args.port, log_level="warning")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="football-edge")
     parser.add_argument("--config", default=None)
@@ -993,8 +1054,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("question", nargs="*", help="ask one question and exit")
     p.set_defaults(func=_analyst)
 
+    p = sub.add_parser("serve", help="the Nox website: API + React app on this PC")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--days", type=int, default=7, help="how many days of fixtures to show")
+    p.set_defaults(func=_serve)
+
     p = sub.add_parser("analyst-eval", help="score the analyst on evals/analyst_questions.yaml")
     p.add_argument("--model", help="try another Ollama model, e.g. qwen3:8b")
+    p.add_argument("--site", action="store_true", help="score Ask Nox (evals/nox_questions.yaml)")
     p.set_defaults(func=_analyst_eval)
 
     p = sub.add_parser("build-features", help="line-up and manager features from Transfermarkt")

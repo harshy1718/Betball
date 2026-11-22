@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -43,6 +44,7 @@ class Answer:
     text: str
     tool_calls: list[tuple[str, dict[str, Any], float]] = field(default_factory=list)
     unverified: list[str] = field(default_factory=list)
+    banned: list[str] = field(default_factory=list)  # banned words still there after the rewrite
     seconds: float = 0.0
     llm_seconds: float = 0.0
 
@@ -51,19 +53,39 @@ def _numbers(text: str) -> set[str]:
     return {normalise_number(n.replace(",", "")) for n in NUMBER.findall(text)}
 
 
+def _banned(text: str, words: Sequence[str]) -> list[str]:
+    low = text.lower()
+    return [w for w in words if re.search(rf"\b{re.escape(w)}\b", low)]
+
+
 class Analyst:
-    def __init__(self, client: ChatClient, tools: AnalystTools, max_steps: int = 4) -> None:
+    """`system`, `schemas` and `banned` default to the CLI analyst; the website passes its own
+    (Nox's voice, no price tool, betting words banned)."""
+
+    def __init__(
+        self,
+        client: ChatClient,
+        tools: AnalystTools,
+        max_steps: int = 4,
+        system: str = SYSTEM,
+        schemas: Sequence[dict[str, Any]] = SCHEMAS,
+        banned: Sequence[str] = (),
+    ) -> None:
         self.client, self.tools, self.max_steps = client, tools, max_steps
+        self.system, self.schemas, self.banned_words = system, list(schemas), list(banned)
         self.history: list[dict[str, Any]] = []  # previous turns, for follow-up questions
         self.seen: set[str] = set()  # numbers from tool results so far in this chat
 
-    def ask(self, question: str) -> Answer:
+    def ask(
+        self, question: str, on_event: Callable[[dict[str, Any]], None] | None = None
+    ) -> Answer:
+        """`on_event` (optional) hears {"type": "tool", "name", "args"} before each tool runs."""
         t0 = time.perf_counter()
         ans = Answer(text="")
-        messages = [{"role": "system", "content": SYSTEM}, *self.history[-12:],
+        messages = [{"role": "system", "content": self.system}, *self.history[-12:],
                     {"role": "user", "content": question}]  # fmt: skip
         allowed = set(self.seen) | _numbers(question)
-        tools = [{"type": "function", "function": s} for s in SCHEMAS]
+        tools = [{"type": "function", "function": s} for s in self.schemas]
         text = ""
         for step in range(self.max_steps + 1):
             final_only = step == self.max_steps  # last round: no more tools, answer now
@@ -85,23 +107,31 @@ class Analyst:
                         args = json.loads(args)
                     except json.JSONDecodeError:
                         args = {}
+                if on_event is not None:
+                    on_event({"type": "tool", "name": name, "args": args})
                 t2 = time.perf_counter()
                 result = self.tools.call(name, args)
                 ans.tool_calls.append((name, args, time.perf_counter() - t2))
                 allowed |= _numbers(result)
                 messages.append({"role": "tool", "tool_name": name, "content": result})
         bad = sorted(_numbers(text) - allowed)
-        if bad:  # one rewrite with the problem spelled out
-            fix = (
-                f"Check: these numbers are not in any tool result: {', '.join(bad)}. Rewrite "
-                "your answer using only numbers the tools returned. Answer only."
-            )
+        words = _banned(text, self.banned_words)
+        if bad or words:  # one rewrite with the problems spelled out
+            problems = []
+            if bad:
+                problems.append(f"these numbers are not in any tool result: {', '.join(bad)}; "
+                                "use only numbers the tools returned")  # fmt: skip
+            if words:
+                problems.append(f"these words are not allowed here: {', '.join(words)}; talk "
+                                "about predictions only")  # fmt: skip
+            fix = f"Check: {'. Also, '.join(problems)}. Rewrite your answer. Answer only."
             messages.append({"role": "user", "content": fix})
             t1 = time.perf_counter()
             msg, _ = self.client.chat(messages, [])
             ans.llm_seconds += time.perf_counter() - t1
             text = str(msg.get("content") or "").strip() or text
             bad = sorted(_numbers(text) - allowed)
+            words = _banned(text, self.banned_words)
         # Guarantee, in code, the one caveat both models dropped: a "worth taking" from our model
         # always comes with the reminder that the market was usually more accurate in testing.
         if (
@@ -112,7 +142,7 @@ class Analyst:
         ):
             text += ("\n(Our model's own view: in testing, the market's price was usually more "
                      "accurate than our model.)")  # fmt: skip
-        ans.text, ans.unverified = text, bad
+        ans.text, ans.unverified, ans.banned = text, bad, words
         self.seen |= allowed
         self.history += [{"role": "user", "content": question},
                          {"role": "assistant", "content": text}]  # fmt: skip

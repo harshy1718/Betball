@@ -154,6 +154,28 @@ content:
   display_names:            # how the presenter says a club, where the automatic choice is wrong
     I1: {Milan: AC Milan}
 
+trader:                     # private trader desk (docs/trader.md, ADR 0018): Harsh's PC only
+  days: 3                   # Nox builds slips from matches in the next 3 days
+  leg_range: [0.55, 0.85]   # good singles: below 55% is a coin flip, above 85% pays too little
+  singles_per_match: 4      # best leg per bet family, up to this many per match
+  parlays:                  # each = highest-paying mix of strong legs above its floor
+    safe: {floor: 0.60, max_legs: 4, high_only: false}   # comes in 60%+ of the time
+    risky: {floor: 0.25, max_legs: 5, high_only: true}   # 25%+, High-confidence legs only
+  parlay_min_cost: 0.05     # every leg must cut the chance by 5+ points (no passengers)
+  parlay_leg_max: 0.95      # legs up to 95% may sit inside a parlay
+  parlay_pool: 12           # strongest legs per match considered
+  include_corners: false    # corners: the model has no skill over the league average (ADR 0008)
+  no_skill_markets: [corners, oddeven]  # always weak: no model skill (ADR 0008, ADR 0018)
+  count_lines:              # the lines Harsh's site offers (22 Nov 2026), over and under
+    cards: [3.5, 4.5, 5.5]
+    corners: [8.5, 9.5, 10.5]
+  stake_by_risk:            # share of staking.monthly_budget per slip, by risk grade
+    Low: 0.02
+    Medium: 0.01
+    High: 0.005
+    Very high: 0.0025
+  slips_path: bets/slips.csv  # saved slips, settled from results (kept out of git with bets/)
+
 analyst:                    # match-analyst chat (docs/analyst.md): local LLM + our tools
   api: ollama
   base_url: http://localhost:11434

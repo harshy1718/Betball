@@ -45,6 +45,7 @@ class Config:
     writer: dict[str, Any]
     content: dict[str, Any]
     analyst: dict[str, Any]
+    trader: dict[str, Any]
 
     @property
     def matches_path(self) -> Path:
@@ -85,4 +86,5 @@ def load_config(path: str | Path | None = None, root: Path | None = None) -> Con
         writer=dict(raw.get("writer") or {}),
         content=dict(raw.get("content") or {}),
         analyst=dict(raw.get("analyst") or {}),
+        trader=dict(raw.get("trader") or {}),
     )

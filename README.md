@@ -23,6 +23,7 @@ On Linux/macOS the same steps are `make install`, `make ingest`, `make check`.
 | `tests/unit`, `tests/integration` | fast tests / tests needing processed data |
 | `docs/` | architecture, data dictionary, specs, decision records (`adr/`) |
 | `reports/` | generated evaluation output, one folder per phase |
+| `web/` | the Nox website (React); run it with `football-edge serve`, see `docs/website.md` |
 | `scripts/` | one-off exploratory scripts (not imported by the package) |
 
 ## Engineering rules
@@ -31,3 +32,6 @@ On Linux/macOS the same steps are `make install`, `make ingest`, `make check`.
 3. Predictions are timestamped before kickoff and never overwritten; live and historical results live in separate tables.
 4. Every change passes the full check (lint, types, tests). Typed code (mypy strict), formatted with ruff.
 5. Parameters live in `configs/`, secrets in `.env` (never committed).
+
+## The Nox website
+Predictions as a website with Nox the owl: `pip install -e ".[web]"`, build once with `cd web; npm install; npm run build`, then `football-edge serve` and open http://127.0.0.1:8000. Details in `docs/website.md`.

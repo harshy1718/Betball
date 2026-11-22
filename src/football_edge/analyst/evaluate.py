@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -12,12 +13,18 @@ from football_edge.analyst.tools import AnalystTools
 
 
 def run(
-    client: ChatClient, tools: AnalystTools, path: Path, max_steps: int
+    client: ChatClient,
+    tools: AnalystTools,
+    path: Path,
+    max_steps: int,
+    make: Callable[[], Analyst] | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
+    """`make` builds a fresh analyst per question (the website passes Nox's); default: the CLI's."""
     cases = yaml.safe_load(path.read_text(encoding="utf-8"))
     rows = []
     for i, c in enumerate(cases, start=1):
-        a = Analyst(client, tools, max_steps).ask(c["q"])  # fresh chat per question
+        bot = make() if make else Analyst(client, tools, max_steps)
+        a = bot.ask(c["q"])  # fresh chat per question
         called = {n for n, _, _ in a.tool_calls}
         want = set(c.get("tools") or [])
         low = a.text.lower()
