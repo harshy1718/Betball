@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import pandas as pd
 
+from football_edge.betting.golden import CS_MIN_ODDS, flags
 from football_edge.betting.staking import StakingPolicy
 from football_edge.predict.confidence import lookup
 from football_edge.predict.forecast import TrainingInfo
@@ -26,10 +28,11 @@ def render_card(
     model: str,
     notes: list[str],
     record: pd.DataFrame | None = None,
-    golden: dict[str, float] | None = None,
+    golden: dict[str, Any] | None = None,
 ) -> str:
-    """`golden`: {"lo", "hi"} for the match-winner bar and "cs_lo" for the correct-score bar."""
+    """`golden`: the `staking` config (golden_bar / golden_ou / golden_cs sections)."""
     g = golden or {}
+    has_gold = any(g.get(k) for k in ("golden_bar", "golden_ou", "golden_cs"))
     cur = policy.currency
     staked = float(singles["stake"].sum() + (doubles["stake"].sum() if len(doubles) else 0))
     lines = [
@@ -43,10 +46,7 @@ def render_card(
         "negative expected value; the stakes are a risk budget, not a money-making system. "
         "`Min odds` is the lowest price worth taking: below it, skip.",
         "",
-        "`Prob` is the market's fair probability (bookmaker margin removed; `sharp` = Pinnacle, "
-        "`site` = your site's own prices) when prices were given, otherwise our model's. The "
-        "market's is the more accurate of the two. ⚠ marks picks where model and market "
-        "differ by 8+ points: usually the market knows something (injury, line-up) we don't.",
+        PROB_NOTE[policy.confidence if policy.confidence in PROB_NOTE else "market"],
         "",
         "`Confidence` is how far to trust the probability, from its track record in "
         "2020/21-2025/26 (High / Medium / Low; rules in predict/confidence.py): e.g. "
@@ -55,23 +55,24 @@ def render_card(
     ]
     for n in notes:
         lines += [f"> **{n}**", ""]
-    gold = [(k, f, *_golden(f, g)) for k, f in fc.iterrows()]
-    if g:
+    gold = {k: flags(f, g) for k, f in fc.iterrows()} if has_gold else {}
+    if has_gold:
         lines += [
             "## ⭐ Golden bets on this card",
             "",
-            f"Match winner: the model's pick at {g.get('lo', 0.6):.0%}-{g.get('hi', 0.64):.0%}. "
-            f"Correct score: the likeliest score at {g.get('cs_lo', 0.12):.0%}+, only at "
-            f"{CS_MIN_ODDS:.2f} or more. Both are UNPROVEN and tracked (`football-edge settle`).",
+            "Golden = inside a golden bar, whatever the price. All bars are UNPROVEN and tracked "
+            f"(`football-edge settle`). Correct score: only at {CS_MIN_ODDS:.2f} or more.",
             "",
-            "| Match | Golden match winner | Golden correct score |",
-            "|---|---|---|",
+            "| Match | Match winner | Over/under 2.5 | Correct score |",
+            "|---|---|---|---|",
         ]
-        hits = [(f, w, c) for _, f, w, c in gold if w or c]
-        for f, w, c in hits:
-            lines.append(f"| {f['home']} v {f['away']} | {w or '-'} | {c or '-'} |")
+        hits = [(k, fl) for k, fl in gold.items() if any(fl.values())]
+        for k, fl in hits:
+            home, away = str(fc.at[k, "home"]), str(fc.at[k, "away"])
+            lines.append(f"| {home} v {away} | {fl['win'] or '-'} | {fl['ou'] or '-'} "
+                         f"| {fl['cs'] or '-'} |")  # fmt: skip
         if not hits:
-            lines.append("| none | - | - |")
+            lines.append("| none | - | - | - |")
         lines.append("")
     for k, f in fc.iterrows():
         lines += [
@@ -92,9 +93,13 @@ def render_card(
             "| Site odds | Exp. value | Stake tier | Stake | Decision | Golden |",
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
         ]
-        win_gold, cs_gold = _golden(f, g)
+        fl = gold.get(k, {"win": "", "ou": "", "cs": ""})
+        cs_gold = fl["cs"]
         for _, s in singles[singles["fixture"] == k].iterrows():
-            star = "⭐" if (s["market"] == "1x2" and win_gold) else "-"
+            golden_here = (s["market"] == "1x2" and fl["win"]) or (
+                s["market"] == "ou25" and fl["ou"]
+            )
+            star = "⭐" if golden_here else "-"
             lines.append(
                 f"| {s['market']} | {s['selection']}{' ⚠' if s['disagree'] else ''} "
                 f"| {s['prob']:.0%} {s['prob_source']} | {_conf(record, s)} "
@@ -142,24 +147,15 @@ def _market_line(f: pd.Series) -> str:
     )
 
 
-CS_MIN_ODDS = 6.80  # break-even of the correct-score bar in 2020-26 (14.7% came true)
-
-
-def _golden(f: pd.Series, g: dict[str, float]) -> tuple[str, str]:
-    """Text for the two golden bars on one match ('' when it does not qualify)."""
-    if not g:
-        return "", ""
-    probs = {"home": float(f["p_h"]), "draw": float(f["p_d"]), "away": float(f["p_a"])}
-    side = max(probs, key=lambda x: probs[x])
-    p = probs[side]
-    win = ""
-    if g.get("lo", 0.60) <= p < g.get("hi", 0.64):
-        name = {"home": f"{f['home']} win", "away": f"{f['away']} win", "draw": "draw"}[side]
-        win = f"⭐ {name} {p:.0%}"
-    cs = ""
-    if "top_score_p" in f and float(f["top_score_p"]) >= g.get("cs_lo", 1.1):
-        cs = f"⭐ {f['top_score']} {float(f['top_score_p']):.1%} (take at {CS_MIN_ODDS:.2f}+)"
-    return win, cs
+PROB_NOTE = {
+    "model": "`Prob` is our model's own probability (no market prices used in any decision). "
+    "The `Market` column is shown for information only. ⚠ marks picks where model and market "
+    "differ by 8+ points: in testing the market was usually closer, so treat those with care.",
+    "market": "`Prob` is the market's fair probability (bookmaker margin removed; `sharp` = "
+    "Pinnacle, `site` = your site's own prices) when prices were given, otherwise our model's. "
+    "The market's is the more accurate of the two. ⚠ marks picks where model and market "
+    "differ by 8+ points: usually the market knows something (injury, line-up) we don't.",
+}
 
 
 def _conf(record: pd.DataFrame | None, s: pd.Series) -> str:

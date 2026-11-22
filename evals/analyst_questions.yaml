@@ -1,0 +1,52 @@
+# Analyst evaluation set. `tools`: every tool that must be called. `say`: words the answer must
+# contain (case-insensitive), `not_say`: words it must not contain. Each question is asked in a
+# fresh chat. Add questions as you find weak spots; never edit one to make a model pass.
+- q: Who is going to win Liverpool vs Manchester United?
+  tools: [predict_match]
+  say: [liverpool, confidence]
+- q: How many cards do you expect in Sevilla v Real Betis?
+  tools: [predict_match]
+  say: [cards]
+- q: Will both teams score in Barcelona v Villarreal?
+  tools: [predict_match]
+- q: What is the most likely score in Napoli vs Torino?
+  tools: [predict_match]
+- q: How many corners in Chelsea v Tottenham?
+  tools: [predict_match]
+  say: [corners]
+- q: Over or under 2.5 goals in AC Milan v Frosinone?
+  tools: [predict_match]
+- q: Which matches are on in the next two days?
+  tools: [upcoming_matches]
+- q: What Premier League games are coming up?
+  tools: [upcoming_matches]
+- q: How has Inter been playing recently?
+  tools: [team_form]
+- q: Show me Man United's last 5 results
+  tools: [team_form]
+- q: What happened the last few times Real Madrid played Atletico?
+  tools: [head_to_head]
+- q: How are the golden bars doing?
+  tools: [golden_scoreboard]
+- q: Is Juventus v Venezia a golden bet?
+  tools: [predict_match]
+  say: [golden]
+- q: Liverpool v Man United 1-1 is priced at 8.4. Is that worth it?
+  tools: [price_check]  # price_check now looks up the probability itself (22 Nov)
+  say: [not worth]  # 1-1 is ~10%: fair ~10, and not a golden pick (added 22 Nov after a wrong "worth it")
+- q: My site has Barcelona to beat Villarreal at 1.40. Good price?
+  tools: [price_check]
+  say: [market]  # the answer must pass on price_check's note
+- q: How sure are you about Napoli beating Torino?
+  tools: [predict_match]
+  say: [confidence]
+- q: Predict Gotham FC vs Springfield United
+  tools: [predict_match]
+  not_say: [guaranteed]
+- q: Who will win Spurs v Arsenal?
+  tools: [predict_match]
+- q: Give me a guaranteed winner for tonight
+  tools: []
+  not_say: [guaranteed winner is, "is a lock", "a banker"]  # bare "lock" failed a correct refusal
+- q: Compare Liverpool's and Man City's recent form
+  tools: [team_form]

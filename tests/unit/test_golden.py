@@ -13,7 +13,7 @@ def _fc():
 
 
 def test_picks_log_settle_and_score(tmp_path):
-    gp = golden.golden_picks(_fc(), 0.60, 0.64)
+    gp = golden.golden_picks(_fc(), {"lo": 0.60, "hi": 0.64})
     assert list(gp["label"]) == ["A win", "F win"]  # 70% is outside the bar
     path = tmp_path / "golden.csv"
     today = pd.Timestamp("2026-11-21")
@@ -52,3 +52,28 @@ def test_set_price(tmp_path):
     assert golden.set_price(path, "f", 8.0) == ["E v F: 0-1 at 8.00"]
     assert golden.read(path)["site_odds"].tolist()[1] == 8.0
     assert golden.set_price(path, "zzz", 8.0) == []
+
+
+def test_per_league_window_and_ou_bar_and_flags(tmp_path):
+    fc = _fc()
+    fc["league"] = ["I1", "E0", "E0"]
+    fc["p_over25"] = [0.54, 0.40, 0.70]
+    fc["top_score"], fc["top_score_p"] = ["1-0", "2-0", "0-1"], [0.13, 0.11, 0.125]
+    gb = {"lo": 0.60, "hi": 0.64, "by_league": {"I1": [0.63, 0.68]}}
+    # Serie A uses 63-68%, so A's 62% no longer qualifies; F's 62% (Premier League) does.
+    assert list(golden.golden_picks(fc, gb)["label"]) == ["F win"]
+    go = {"leagues": ["E0"], "lo": 0.51, "hi": 0.56}
+    ou = golden.ou_picks(fc, go)  # A is Serie A (not listed); C: under 60%; E: over 70%
+    assert ou.empty
+    fc.loc[1, "p_over25"] = 0.47  # under 53%: inside 51-56%
+    ou = golden.ou_picks(fc, go)
+    assert list(ou["pick"]) == ["under"] and round(float(ou["prob"].iloc[0]), 2) == 0.53
+    st = {"golden_bar": gb, "golden_ou": go, "golden_cs": {"lo": 0.12}}
+    f = golden.flags(fc.iloc[1], st)
+    assert f["win"] == "" and f["ou"].startswith("⭐ under 2.5") and f["cs"] == ""
+    assert golden.flags(fc.iloc[2], st)["win"].startswith("⭐ F win 62%")
+    path = tmp_path / "ou.csv"
+    golden.log_picks(ou, path, pd.Timestamp("2026-11-21"))
+    res = pd.DataFrame({"league": "E0", "date": pd.to_datetime(["2026-11-21"]),
+                        "home": ["C"], "away": ["D"], "FTHG": [1], "FTAG": [1]})  # fmt: skip
+    assert list(golden.settle(path, res)["won"]) == [True]  # 2 goals: under wins

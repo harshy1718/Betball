@@ -9,6 +9,7 @@ Judge it at 200 settled picks, not before.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -18,8 +19,28 @@ COLS = ["logged_on", "league", "date", "home", "away", "pick", "prob", "site_odd
 JUDGE_AT = 200
 
 
-def golden_picks(fc: pd.DataFrame, lo: float, hi: float) -> pd.DataFrame:
-    """Fixtures whose model 1X2 favourite (home, draw or away) is in [lo, hi)."""
+BARS = (  # (config key under `staking`, default log file, scoreboard name)
+    ("golden_bar", "bets/golden_bar.csv", "Match-winner bar"),
+    ("golden_ou", "bets/golden_ou.csv", "Over/under bar"),
+    ("golden_cs", "bets/golden_cs.csv", "Correct-score bar"),
+)
+CS_MIN_ODDS = 6.80  # break-even of the correct-score bar in 2020-26 (14.7% came true)
+
+
+def winner_window(gb: dict[str, Any], league: str) -> tuple[float, float]:
+    """The match-winner window for one league: `by_league` override, else lo/hi."""
+    w = (gb.get("by_league") or {}).get(league)
+    if w:
+        return float(w[0]), float(w[1])
+    return float(gb.get("lo", 0.60)), float(gb.get("hi", 0.64))
+
+
+def _pct(lo: float, hi: float) -> str:
+    return f"{lo:.0%}-{hi:.0%}"
+
+
+def golden_picks(fc: pd.DataFrame, gb: dict[str, Any]) -> pd.DataFrame:
+    """Match-winner bar: fixtures whose model favourite is inside its league's window."""
     probs = fc[["p_h", "p_d", "p_a"]].to_numpy(float)
     i = probs.argmax(axis=1)
     p = probs.max(axis=1)
@@ -34,7 +55,55 @@ def golden_picks(fc: pd.DataFrame, lo: float, hi: float) -> pd.DataFrame:
         "label": [f"{n} win" if s != "draw" else "draw" for n, s in zip(names, side, strict=True)],
         "prob": p, "site_odds": odds,
     })  # fmt: skip
-    return out[(out["prob"] >= lo) & (out["prob"] < hi)].reset_index(drop=True)
+    windows = [winner_window(gb, str(lg)) for lg in out["league"]]
+    keep = [lo <= q < hi for q, (lo, hi) in zip(out["prob"], windows, strict=True)]
+    return out[keep].reset_index(drop=True)
+
+
+def ou_picks(fc: pd.DataFrame, go: dict[str, Any]) -> pd.DataFrame:
+    """Over/under bar: the model's over/under 2.5 pick, in the listed leagues, inside [lo, hi)."""
+    q = fc["p_over25"].to_numpy(float)
+    over = q >= 0.5
+    p = np.where(over, q, 1 - q)
+    if "odds_over25" in fc and "odds_under25" in fc:
+        odds = np.where(over, fc["odds_over25"], fc["odds_under25"]).astype(float)
+    else:
+        odds = np.full(len(fc), np.nan)
+    out = pd.DataFrame({
+        "league": fc["league"].to_numpy(), "date": pd.to_datetime(fc["date"]).to_numpy(),
+        "home": fc["home"].to_numpy(), "away": fc["away"].to_numpy(),
+        "pick": np.where(over, "over", "under"),
+        "label": np.where(over, "over 2.5 goals", "under 2.5 goals"), "prob": p, "site_odds": odds,
+    })  # fmt: skip
+    lo, hi = float(go.get("lo", 0.51)), float(go.get("hi", 0.56))
+    leagues = set(go.get("leagues") or [])
+    keep = (out["prob"] >= lo) & (out["prob"] < hi)
+    if leagues:
+        keep &= out["league"].isin(leagues)
+    return out[keep].reset_index(drop=True)
+
+
+def flags(f: pd.Series, st: dict[str, Any]) -> dict[str, str]:
+    """Golden-bar text for one forecast row: keys 'win', 'ou', 'cs' ('' when not golden).
+    Independent of price: a golden pick is golden whatever the odds."""
+    row = f.to_frame().T
+    out = {"win": "", "ou": "", "cs": ""}
+    gb, go, cs = (st.get(k) or {} for k in ("golden_bar", "golden_ou", "golden_cs"))
+    if gb:
+        g = golden_picks(row, gb)
+        if len(g):
+            lo, hi = winner_window(gb, str(f["league"]))
+            out["win"] = (
+                f"⭐ {g.iloc[0]['label']} {float(g.iloc[0]['prob']):.0%} (bar {_pct(lo, hi)})"
+            )
+    if go and "p_over25" in f:
+        g = ou_picks(row, go)
+        if len(g):
+            out["ou"] = f"⭐ {g.iloc[0]['label']} {float(g.iloc[0]['prob']):.0%}"
+    if cs and "top_score_p" in f and float(f["top_score_p"]) >= float(cs.get("lo", 0.12)):
+        out["cs"] = (f"⭐ {f['top_score']} {float(f['top_score_p']):.1%} "
+                     f"(take at {CS_MIN_ODDS:.2f}+)")  # fmt: skip
+    return out
 
 
 def cs_picks(fc: pd.DataFrame, lo: float) -> pd.DataFrame:
@@ -117,6 +186,8 @@ def settle(path: Path, matches: pd.DataFrame, stake: float = 100.0) -> pd.DataFr
         pick = str(log.at[k, "pick"])
         if "-" in pick:  # correct score, e.g. "2-1"
             won = pick == f"{hg}-{ag}"
+        elif pick in ("over", "under"):
+            won = (hg + ag >= 3) == (pick == "over")
         else:
             won = pick == ("home" if hg > ag else ("draw" if hg == ag else "away"))
         log.at[k, "result"] = f"{hg}-{ag}"

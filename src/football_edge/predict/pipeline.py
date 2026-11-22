@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -20,10 +21,18 @@ from football_edge.predict.forecast import (
 def forecast_fixtures(
     cfg: Config, history: pd.DataFrame, fixtures: pd.DataFrame
 ) -> tuple[pd.DataFrame, TrainingInfo]:
+    fc, info, _ = forecast_with_model(cfg, history, fixtures)
+    return fc, info
+
+
+def forecast_with_model(
+    cfg: Config, history: pd.DataFrame, fixtures: pd.DataFrame
+) -> tuple[pd.DataFrame, TrainingInfo, Any]:
+    """As forecast_fixtures, plus the fitted model (for exact score probabilities)."""
     model_name = cfg.predict.get("model", "dixon_coles")
     model, info = fit_for(history, fixtures, cfg.models.get(model_name, {}))
     fc = market_view(forecast(model, fixtures))
-    return pd.concat([fc, count_forecasts(history, fixtures)], axis=1), info
+    return pd.concat([fc, count_forecasts(history, fixtures)], axis=1), info, model
 
 
 def attach_prices(

@@ -256,16 +256,43 @@ def _bar_test(args: argparse.Namespace) -> None:
 def _window_search(args: argparse.Namespace) -> None:
     import pandas as pd
 
+    from football_edge.evaluation import (
+        bar_by_league,
+        ou_split_search,
+        threshold_both,
+        window_both,
+        window_search,
+    )
     from football_edge.evaluation.prob_bar import load_prices
-    from football_edge.evaluation.window_search import run
 
     cfg = load_config(args.config)
     preds = pd.read_parquet(cfg.reports_dir / "evaluation" / "dixon_coles" / "predictions.parquet")
     preds["date"] = pd.to_datetime(preds["date"]).dt.normalize()
     prices = load_prices(cfg.raw_dir, list(cfg.leagues), range(2018, 2026))
     m = preds.merge(prices, on=["league", "date", "home", "away"], how="left")
-    report = run(m)
-    out = cfg.reports_dir / "window_search"
+    if args.bars:
+        p26 = cfg.reports_dir / "evaluation" / "dixon_coles" / "predictions_2026.parquet"
+        m26 = None
+        if p26.exists():
+            q = pd.read_parquet(p26)
+            q["date"] = pd.to_datetime(q["date"]).dt.normalize()
+            pr26 = load_prices(cfg.raw_dir, list(cfg.leagues), range(2026, 2027))
+            m26 = q.merge(pr26, on=["league", "date", "home", "away"], how="left")
+        report = threshold_both.run(m, m26)
+    elif args.both:
+        report = window_both.run(m, lo_min=args.above or 0.20)
+    elif args.by_league:
+        report = bar_by_league.run(m, args.above or 0.20)
+    elif args.ou_split:
+        report = ou_split_search.run(m)
+    else:
+        report = window_search.run(m)
+    out = cfg.reports_dir / (
+        "threshold_both" if args.bars
+        else ("window_both_above_50" if args.above else "window_both") if args.both
+        else ("bar_above_50" if args.above else "bar_by_league") if args.by_league
+        else "ou_split_search" if args.ou_split else "window_search"
+    )  # fmt: skip
     out.mkdir(parents=True, exist_ok=True)
     (out / "verdict.md").write_text(report, encoding="utf-8")
     print(report)
@@ -276,8 +303,9 @@ def _price(args: argparse.Namespace) -> None:
     from football_edge.betting import golden
 
     cfg = load_config(args.config)
-    key = "golden_cs" if args.bar == "score" else "golden_bar"
-    default = "bets/golden_cs.csv" if args.bar == "score" else "bets/golden_bar.csv"
+    key, default, _ = {
+        "winner": golden.BARS[0], "ou": golden.BARS[1], "score": golden.BARS[2]
+    }[args.bar]  # fmt: skip
     path = cfg.root / (cfg.staking.get(key) or {}).get("log_path", default)
     done = golden.set_price(path, args.team, args.odds)
     if not done:
@@ -286,6 +314,81 @@ def _price(args: argparse.Namespace) -> None:
         print(f"saved: {d}")
     if args.bar == "score" and args.odds < 6.80:
         print("note: below 6.80, the break-even price for this bar; history says skip it")
+
+
+def _analyst(args: argparse.Namespace) -> None:
+    import json as _json
+
+    import pandas as pd
+
+    from football_edge.analyst.agent import Analyst
+    from football_edge.analyst.tools import AnalystTools
+    from football_edge.news.extract import LLMError, NewsConfig, OllamaClient
+
+    cfg = load_config(args.config)
+    print("loading data and model...", flush=True)
+    analyst = Analyst(
+        OllamaClient(NewsConfig.from_dict(cfg.analyst)),
+        AnalystTools(cfg),
+        max_steps=int(cfg.analyst.get("max_steps", 4)),
+    )
+    log_path = cfg.reports_dir / "analyst" / "chat_log.jsonl"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def one(q: str) -> None:
+        try:
+            a = analyst.ask(q)
+        except LLMError as e:
+            print(f"error: {e}")
+            return
+        for name, targs, sec in a.tool_calls:
+            shown = ", ".join(f"{k}={v}" for k, v in targs.items())
+            print(f"  [tool] {name}({shown})  {sec:.1f}s")
+        print(f"\n{a.text}\n")
+        if a.unverified:
+            print(f"  [check] numbers not found in any tool result: {', '.join(a.unverified)}")
+        print(f"  ({a.seconds:.0f}s, of which LLM {a.llm_seconds:.0f}s)\n", flush=True)
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(_json.dumps({
+                "time": pd.Timestamp.now().isoformat(timespec="seconds"), "question": q,
+                "tools": [[n, t] for n, t, _ in a.tool_calls], "answer": a.text,
+                "unverified": a.unverified, "seconds": round(a.seconds, 1),
+            }) + "\n")  # fmt: skip
+
+    if args.question:
+        one(" ".join(args.question))
+        return
+    print("Ask about any EPL, Serie A or La Liga match. Type 'exit' to stop.\n")
+    while True:
+        try:
+            q = input("you> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if q.lower() in {"exit", "quit", "q"}:
+            break
+        if q:
+            one(q)
+
+
+def _analyst_eval(args: argparse.Namespace) -> None:
+    from football_edge.analyst.evaluate import run
+    from football_edge.analyst.tools import AnalystTools
+    from football_edge.news.extract import NewsConfig, OllamaClient
+
+    cfg = load_config(args.config)
+    conf = dict(cfg.analyst)
+    if args.model:
+        conf["model"] = args.model
+    client = OllamaClient(NewsConfig.from_dict(conf))
+    print(f"evaluating the analyst with {conf.get('model')}...", flush=True)
+    report, _ = run(client, AnalystTools(cfg), cfg.root / "evals" / "analyst_questions.yaml",
+                    int(conf.get("max_steps", 4)))  # fmt: skip
+    out = cfg.reports_dir / "analyst"
+    out.mkdir(parents=True, exist_ok=True)
+    name = str(conf.get("model")).replace(":", "_").replace("/", "_")
+    (out / f"eval_{name}.md").write_text(report, encoding="utf-8")
+    print(report.split("\n\n")[1])
+    print(f"saved to {out / f'eval_{name}.md'}")
 
 
 def _build_features(args: argparse.Namespace) -> None:
@@ -762,31 +865,33 @@ def _predict(args: argparse.Namespace) -> None:
     record = load_track_record(cfg.reports_dir / "confidence" / "track_record.csv")
     if record is None:
         warnings.append("no confidence track record yet: run `football-edge build-confidence`")
-    gb, cs = cfg.staking.get("golden_bar") or {}, cfg.staking.get("golden_cs") or {}
-    gold: dict[str, float] = {}
-    if gb:
-        gold.update(lo=float(gb.get("lo", 0.60)), hi=float(gb.get("hi", 0.64)))
-    if cs:
-        gold.update(cs_lo=float(cs.get("lo", 0.12)))
     card = render_card(
         fc, singles, doubles, policy, info, model_name, warnings + notes, record=record,
-        golden=gold,
+        golden=cfg.staking,
     )  # fmt: skip
-    if gold:
-        from football_edge.betting import golden
+    from football_edge.betting import golden
 
-        track = ["", "## Golden bar tracking", ""]
-        if gb:
-            gpath = cfg.root / gb.get("log_path", "bets/golden_bar.csv")
-            n_new = golden.log_picks(golden.golden_picks(fc, gold["lo"], gold["hi"]), gpath, today)
-            track.append(f"- {n_new} new pick(s) logged. {golden.scoreboard(golden.read(gpath))}")
-        if cs:
-            cpath = cfg.root / cs.get("log_path", "bets/golden_cs.csv")
-            n_new = golden.log_picks(golden.cs_picks(fc, gold["cs_lo"]), cpath, today)
-            board = golden.scoreboard(golden.read(cpath), "Correct-score bar")
-            track.append(f"- {n_new} new pick(s) logged. {board} Type your site's price into "
-                         f"{cpath.name} (site_odds) to track profit.")  # fmt: skip
-        card += "\n".join(track) + "\n"
+    track = []
+    for key, default, name in golden.BARS:
+        conf = cfg.staking.get(key) or {}
+        if not conf:
+            continue
+        if key == "golden_bar":
+            picks = golden.golden_picks(fc, conf)
+        elif key == "golden_ou":
+            picks = golden.ou_picks(fc, conf)
+        else:
+            picks = golden.cs_picks(fc, float(conf.get("lo", 0.12)))
+        path = cfg.root / conf.get("log_path", default)
+        n_new = golden.log_picks(picks, path, today)
+        track.append(f"- {n_new} new pick(s) logged. {golden.scoreboard(golden.read(path), name)}")
+    if track:
+        card += (
+            "\n## Golden bar tracking\n\n"
+            + "\n".join(track)
+            + "\n\nRecord your site's price: "
+            + "`football-edge price winner|ou|score <team> <odds>`.\n"
+        )
     (out / "card.md").write_text(card, encoding="utf-8")
     print(card)
     print(f"saved to {out}")
@@ -800,20 +905,14 @@ def _settle(args: argparse.Namespace) -> None:
     from football_edge.betting.ledger import read_log, settle, summary, write_log
 
     cfg = load_config(args.config)
-    gb = cfg.staking.get("golden_bar") or {}
-    if gb:
-        from football_edge.betting import golden
+    from football_edge.betting import golden
 
-        gpath = cfg.root / gb.get("log_path", "bets/golden_bar.csv")
-        if gpath.exists():
-            print(golden.scoreboard(golden.settle(gpath, load_matches(cfg))))
-    cs = cfg.staking.get("golden_cs") or {}
-    if cs:
-        from football_edge.betting import golden
-
-        cpath = cfg.root / cs.get("log_path", "bets/golden_cs.csv")
-        if cpath.exists():
-            print(golden.scoreboard(golden.settle(cpath, load_matches(cfg)), "Correct-score bar"))
+    results = load_matches(cfg)
+    for key, default, name in golden.BARS:
+        conf = cfg.staking.get(key) or {}
+        path = cfg.root / conf.get("log_path", default)
+        if conf and path.exists():
+            print(golden.scoreboard(golden.settle(path, results), name))
     log_path = cfg.root / cfg.staking.get("log_path", "bets/log.csv")
     log = read_log(log_path)
     if log.empty:
@@ -877,13 +976,26 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=_bar_test)
 
     p = sub.add_parser("window-search", help="pre-registered search of every probability window")
+    p.add_argument("--ou-split", action="store_true", help="over/under by side and league (0013)")
+    p.add_argument("--by-league", action="store_true", help="each bet type and league (0014)")
+    p.add_argument("--both", action="store_true", help="every window in both periods, best 2")
+    p.add_argument("--bars", action="store_true", help="open-ended bars (X%% or more), best 2")
+    p.add_argument("--above", type=float, help="with --by-league: windows from this up (0015: 0.5)")
     p.set_defaults(func=_window_search)
 
     p = sub.add_parser("price", help="record your site's price for a golden pick")
-    p.add_argument("bar", choices=["score", "winner"], help="which golden bar")
+    p.add_argument("bar", choices=["winner", "ou", "score"], help="which golden bar")
     p.add_argument("team", help="any part of either team's name, e.g. Lazio")
     p.add_argument("odds", type=float)
     p.set_defaults(func=_price)
+
+    p = sub.add_parser("chat", help="match-analyst chat (local LLM + our tools)")
+    p.add_argument("question", nargs="*", help="ask one question and exit")
+    p.set_defaults(func=_analyst)
+
+    p = sub.add_parser("analyst-eval", help="score the analyst on evals/analyst_questions.yaml")
+    p.add_argument("--model", help="try another Ollama model, e.g. qwen3:8b")
+    p.set_defaults(func=_analyst_eval)
 
     p = sub.add_parser("build-features", help="line-up and manager features from Transfermarkt")
     p.add_argument("--tm", required=True, type=Path, help="folder with the extracted dataset")

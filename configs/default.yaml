@@ -110,10 +110,19 @@ staking:                    # docs/adr/0006-staking-policy.md
   stake_rounding: 10
   confidence: model         # model = our own probabilities only (Harsh's choice, 21 Nov 2026);
                             # market = the margin-free market probability when prices exist
-  golden_bar:               # Harsh's golden bar (22 Nov 2026): model match-winner pick at 60-64%.
-    lo: 0.60                # UNPROVEN (window search, ADR 0012); every pick is logged and settled
-    hi: 0.64                # by `football-edge settle`. Judge at 200 settled picks.
+  golden_bar:               # match-winner golden bar (Harsh, 22 Nov 2026): the model's favourite
+    lo: 0.60                # inside its league's window. UNPROVEN: windows from
+    hi: 0.64                # reports/window_both_above_50 (best in both periods per league) and
+    by_league:              # checked on 2026/27 (reports/season_2026). Logged and settled by
+      E0: [0.60, 0.64]      # `football-edge settle`. Judge at 200 settled picks.
+      I1: [0.63, 0.68]
+      SP1: [0.60, 0.64]
     log_path: bets/golden_bar.csv
+  golden_ou:                # over/under 2.5 golden bar (Harsh, 22 Nov 2026): Premier League only,
+    leagues: [E0]           # the model's over/under pick at 51-56%. UNPROVEN and it LOST on
+    lo: 0.51                # 2026/27 so far (51-53%: -23% on 18; 52-56%: -4.9% on 29). Review at
+    hi: 0.56                # 100 settled picks; drop if still losing.
+    log_path: bets/golden_ou.csv
   golden_cs:                # correct-score golden bar (22 Nov 2026): back the likeliest score when
     lo: 0.12                # its chance is 12%+. UNPROVEN: in 2020-26 it hit 14.7% (break-even 6.80);
     log_path: bets/golden_cs.csv  # no historical correct-score prices exist. Judge at 200.
@@ -144,3 +153,15 @@ content:
   videos_per_round: 3
   display_names:            # how the presenter says a club, where the automatic choice is wrong
     I1: {Milan: AC Milan}
+
+analyst:                    # match-analyst chat (docs/analyst.md): local LLM + our tools
+  api: ollama
+  base_url: http://localhost:11434
+  model: qwen3:8b           # chosen 22 Nov: same eval score as gemma4:12b, about 2x faster
+                            # (reports/analyst/eval_*.md); gemma4:12b still works
+  think: false
+  temperature: 0.2          # low: answers should be faithful, not creative
+  num_ctx: 8192
+  num_predict: 500
+  timeout_s: 600
+  max_steps: 4              # tool rounds per question

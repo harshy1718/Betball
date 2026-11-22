@@ -13,6 +13,7 @@ latency and token use so cost can be measured in the evaluation.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import time
@@ -53,7 +54,8 @@ class NewsConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> NewsConfig:
-        return cls(**d)
+        known = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in d.items() if k in known})
 
 
 class LLMError(RuntimeError):
@@ -162,6 +164,41 @@ class OllamaClient:
             "thinking_chars": len(msg.get("thinking") or ""),
         }
         return str(msg.get("content") or ""), usage
+
+    def chat(
+        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """One chat step with tools (Ollama tool calling). Returns (message, usage)."""
+        body: dict[str, Any] = {
+            "model": self.cfg.model,
+            "stream": False,
+            "think": self.cfg.think,
+            "messages": messages,
+            "options": {
+                "temperature": self.cfg.temperature,
+                "num_ctx": self.cfg.num_ctx,
+                "num_predict": self.cfg.num_predict,
+            },
+        }
+        if tools:
+            body["tools"] = tools
+        try:
+            data = self._post(body)
+        except LLMError as e:
+            low = str(e).lower()
+            if "does not support tools" in low:
+                raise LLMError(
+                    f"'{self.cfg.model}' cannot call tools in Ollama. Pull a model that can, e.g. "
+                    "`ollama pull qwen3:8b`, and set analyst: model: in configs/default.yaml"
+                ) from None
+            if "think" not in low:
+                raise
+            body.pop("think")
+            data = self._post(body)
+        msg = dict(data.get("message") or {})
+        usage = {"seconds": round(data.get("total_duration", 0) / 1e9, 1),
+                 "completion_tokens": data.get("eval_count", 0)}  # fmt: skip
+        return msg, usage
 
 
 def make_client(cfg: NewsConfig) -> ChatClient:

@@ -9,6 +9,7 @@ from football_edge.markets.price_edge import bootstrap_roi
 
 DISCOVERY, HOLDOUT = (2018, 2022), (2023, 2025)
 MIN_BETS = 200
+LO_MIN = 0.20  # lowest window start searched (ADR 0015 uses 0.50)
 
 
 def candidates(
@@ -51,7 +52,7 @@ def scan(c: pd.DataFrame) -> pd.DataFrame:
     p, prof = c["p"].to_numpy(), c["profit"].to_numpy()
     cum = np.concatenate([[0.0], np.cumsum(prof)])
     rows = []
-    for lo in np.round(np.arange(0.20, 0.9001, 0.01), 2):
+    for lo in np.round(np.arange(LO_MIN, 0.9001, 0.01), 2):
         i = int(np.searchsorted(p, lo, side="left"))
         for width in np.round(np.arange(0.02, 0.3001, 0.01), 2):
             hi = round(lo + width, 2)
