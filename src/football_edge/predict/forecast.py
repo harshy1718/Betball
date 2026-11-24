@@ -13,6 +13,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from football_edge.config import Config
+from football_edge.models.calibration import CardCalibration, GoalCalibration
 from football_edge.models.dixon_coles import DixonColes, DixonColesParams
 
 log = logging.getLogger(__name__)
@@ -58,9 +60,22 @@ def fit_for(
     return model, info
 
 
+def load_calibration(cfg: Config) -> tuple[GoalCalibration | None, CardCalibration | None]:
+    """The adopted calibration maps (ADR 0020), or (None, None) when switched off."""
+    from football_edge.models.calibration import load
+
+    c = cfg.calibration
+    if not c.get("enabled", False):
+        return None, None
+    return load(cfg.root / str(c.get("path", "reports/calibration/calibration.json")))
+
+
 def forecast(model: DixonColes, fixtures: pd.DataFrame, top_scores: int = 3) -> pd.DataFrame:
-    """One row per fixture: all market probabilities, expected goals, likeliest scores."""
+    """One row per fixture: all market probabilities, expected goals, likeliest scores.
+    With a calibration attached to the model, every number is calibrated and the raw
+    expected goals are kept in raw_exp_home / raw_exp_away (for the prediction log)."""
     lam, mu = model.expected_goals(fixtures)
+    raw_lam, raw_mu = model.raw_expected_goals(fixtures)
     g = np.arange(model.params.max_goals + 1)
     total = g[:, None] + g[None, :]
     rows = []
@@ -84,6 +99,8 @@ def forecast(model: DixonColes, fixtures: pd.DataFrame, top_scores: int = 3) -> 
                 "p_btts_no": 1.0 - p_btts,
                 "exp_home": float(lam[k]),
                 "exp_away": float(mu[k]),
+                "raw_exp_home": float(raw_lam[k]),
+                "raw_exp_away": float(raw_mu[k]),
                 "top_scores": ", ".join(scores),
                 "top_score": scores[0].split(" ")[0],
                 "top_score_p": float(m.flat[order[0]]),
@@ -120,25 +137,50 @@ def market_view(fc: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def count_forecasts(history: pd.DataFrame, fixtures: pd.DataFrame) -> pd.DataFrame:
-    """Corners, yellow cards and red cards for each fixture (models/counts.py).
+LIVE_STATS = ("cards", "yellows", "reds")  # corners dropped: no skill over the league average
+
+
+def count_forecasts(
+    history: pd.DataFrame,
+    fixtures: pd.DataFrame,
+    stats: tuple[str, ...] = LIVE_STATS,
+    cards_cal: CardCalibration | None = None,
+) -> pd.DataFrame:
+    """Cards, yellow cards and red cards for each fixture (models/counts.py).
 
     Trained on every match before the earliest fixture, like the goals model. Columns:
-    exp_<stat> (expected match total) and p_<stat>_over_<line> for the standard lines.
+    exp_<stat> (expected match total) and p_<stat>_over_<line> for the standard lines. Corners
+    are no longer forecast: the team model never beat the league average (ADR 0008, 0020).
+    With `cards_cal` the cards numbers are calibrated (ADR 0020) and the raw chances kept in
+    raw_p_cards_over_<line>.
     """
+    from football_edge.models.calibration import p_over_nb
     from football_edge.models.counts import STATS, CountParams, TeamCountModel, with_card_totals
 
     train = with_card_totals(history[history["date"] < fixtures["date"].min()])
     out = pd.DataFrame(index=range(len(fixtures)))
     fx = fixtures.reset_index(drop=True)
-    for stat, (hcol, acol, lines) in STATS.items():
+    for stat in stats:
+        hcol, acol, lines = STATS[stat]
         if not {hcol, acol} <= set(train.columns):
             continue
         # Red cards: the league-average model; team effects scored worse (ADR 0008).
         m = TeamCountModel(stat, CountParams(team_effects=stat != "reds"))
         m.fit(train)
         lam, mu = m.expected(fx)
-        out[f"exp_{stat}"] = lam + mu
+        exp = lam + mu
+        if stat == "cards" and cards_cal is not None:
+            b = TeamCountModel(stat, CountParams(team_effects=False))
+            b.fit(train)
+            bl, bm = b.expected(fx)
+            k = np.array([m.k.get(lg, float("inf")) for lg in fx["league"]])
+            exp2, k2 = cards_cal.mean(exp, bl + bm), cards_cal.k(k)
+            out[f"exp_{stat}"] = exp2
+            for line in lines:
+                out[f"p_{stat}_over_{line}"] = p_over_nb(exp2, k2, line)
+                out[f"raw_p_{stat}_over_{line}"] = m.p_over(fx, line)
+            continue
+        out[f"exp_{stat}"] = exp
         for line in lines:
             out[f"p_{stat}_over_{line}"] = m.p_over(fx, line)
     return out

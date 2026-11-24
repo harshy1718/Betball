@@ -165,7 +165,7 @@ export default function Ask() {
           <div className="stack-6 ask-side-text">
             <h1 className="h1">Ask Nox</h1>
             <p className="muted">
-              Ask about any Premier League, Serie A or La Liga match: who wins, goals, corners, cards, form or past
+              Ask about any Premier League, Serie A or La Liga match: who wins, goals, cards, form or past
               meetings. Nox checks the model before he answers.
             </p>
             {status.data?.model && (

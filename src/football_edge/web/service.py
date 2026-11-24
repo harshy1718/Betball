@@ -268,7 +268,6 @@ class NoxService:
                            "confidence": str(goals["goals_confidence"]), "why": why_goals},
             "top_scores": top,
             "grid": grid,
-            "corners": {"expected": get("exp_corners"), "over_9_5": get("p_corners_over_9.5")},
             "cards": {"expected": get("exp_cards"), "over_3_5": get("p_cards_over_3.5"),
                       "over_4_5": get("p_cards_over_4.5"), "red": get("p_reds_over_0.5")},
             "form": {"home": form(str(f["home"])), "away": form(str(f["away"]))},

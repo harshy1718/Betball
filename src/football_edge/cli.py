@@ -20,6 +20,7 @@ MODELS = [
     "dixon_coles_lineup",
     "dixon_coles_trust",
     "dixon_coles_manager",
+    "dixon_coles_dynamic",
 ]
 
 
@@ -484,7 +485,7 @@ def _evaluate_counts(args: argparse.Namespace) -> None:
     preds = walk_forward_counts(matches, folds)
     out = cfg.reports_dir / "evaluation" / "counts"
     out.mkdir(parents=True, exist_ok=True)
-    preds.to_parquet(out / "predictions.parquet", index=False)
+    preds.to_parquet(out / f"{args.out_name}.parquet", index=False)
     summary = summarise_counts(preds)
     summary.to_csv(out / "summary.csv", index=False, float_format="%.5f")
     print(summary.round(4).to_string(index=False))
@@ -494,40 +495,141 @@ def _evaluate_counts(args: argparse.Namespace) -> None:
     print(f"\nsaved to {out}")
 
 
-def _build_confidence(args: argparse.Namespace) -> None:
-    import pandas as pd
+def _build_matches(args: argparse.Namespace) -> None:
+    """Rebuild data/processed/matches.parquet from the committed raw files (no downloads)."""
+    import json
 
-    from football_edge.predict.confidence import build_track_record
+    from football_edge.data.loader import build_matches
 
     cfg = load_config(args.config)
-    goals = cfg.reports_dir / "evaluation" / "dixon_coles" / "predictions.parquet"
-    counts = cfg.reports_dir / "evaluation" / "counts" / "predictions.parquet"
-    if not goals.exists():
+    manifest = json.loads((cfg.raw_dir / "manifest.json").read_text(encoding="utf-8"))
+    matches = build_matches([cfg.raw_dir / str(m["file"]) for m in manifest], cfg)
+    cfg.processed_dir.mkdir(parents=True, exist_ok=True)
+    matches.to_parquet(cfg.matches_path, index=False)
+    print(f"ok: {len(matches)} matches from {len(manifest)} raw files")
+
+
+def _current_rho(cfg: Any) -> float:
+    """rho of the goals model fitted on every match (used to rebuild score grids)."""
+    from football_edge.models.dixon_coles import DixonColes, DixonColesParams
+
+    dc = DixonColes(DixonColesParams.from_dict(dict(cfg.models.get("dixon_coles", {}))))
+    dc.fit(load_matches(cfg))
+    return float(dc.rho)
+
+
+def _calibrate(args: argparse.Namespace) -> None:
+    from football_edge.evaluation.calibration_study import run
+
+    cfg = load_config(args.config)
+    print(run(cfg.reports_dir, _current_rho(cfg), load_matches(cfg)))
+    print("next: `football-edge build-confidence` so the labels describe the calibrated numbers")
+
+
+def _confidence_inputs(cfg: Any) -> tuple[Any, Any, bool]:
+    """(goals predictions, count predictions, calibrated?) behind the confidence labels: the
+    calibrated walk-forward predictions when calibration is on and adopted (ADR 0020), so the
+    labels describe the numbers the site and desk actually show."""
+    import pandas as pd
+
+    from football_edge.predict.forecast import load_calibration
+
+    ev = cfg.reports_dir / "evaluation"
+    goals = pd.read_parquet(ev / "dixon_coles" / "predictions.parquet")
+    cpath = ev / "counts" / "predictions.parquet"
+    counts = pd.read_parquet(cpath) if cpath.exists() else None
+    goals_cal, cards_cal = load_calibration(cfg)
+    used = False
+    gcal = ev / "dixon_coles" / "predictions_calibrated.parquet"
+    if goals_cal is not None and gcal.exists():
+        goals, used = pd.read_parquet(gcal), True
+    ccal = ev / "counts" / "predictions_calibrated.parquet"
+    if cards_cal is not None and counts is not None and ccal.exists():
+        cards = pd.read_parquet(ccal)
+        counts = pd.concat([counts[counts["stat"] != "cards"], cards[counts.columns]],
+                           ignore_index=True)  # fmt: skip
+        used = True
+    return goals, counts, used
+
+
+def _replay_desk(args: argparse.Namespace) -> None:
+    """Replay the desk's slip rules with walk-forward labels and lifts (no future data)."""
+    from football_edge.evaluation.desk_replay import per_season, replay, summarise
+
+    cfg = load_config(args.config)
+    goals, counts, calibrated = _confidence_inputs(cfg)
+    matches = load_matches(cfg)
+    lo, hi = args.seasons
+    slips = replay(goals, counts, matches, dict(cfg.trader), _current_rho(cfg), (lo, hi),
+                   workers=args.workers)  # fmt: skip
+    out = cfg.reports_dir / "replay"
+    out.mkdir(parents=True, exist_ok=True)
+    slips.to_parquet(out / "slips.parquet", index=False)
+    summ, seas = summarise(slips), per_season(slips)
+    summ.to_csv(out / "summary.csv", index=False)
+    seas.to_csv(out / "per_season.csv", index=False)
+    kind = "calibrated" if calibrated else "raw"
+    head = (f"Desk replay {lo}/{(lo + 1) % 100:02d}-{hi}/{(hi + 1) % 100:02d}, "
+            f"{kind} chances, walk-forward labels and lifts.")  # fmt: skip
+    text = head + "\n\n" + summ.to_string(index=False) + "\n\n" + seas.to_string(index=False)
+    (out / "verdict.md").write_text(text + "\n", encoding="utf-8")
+    print(text)
+
+
+def _referee_test(args: argparse.Namespace) -> None:
+    from football_edge.evaluation.referee_test import run
+
+    cfg = load_config(args.config)
+    text, rows = run(load_matches(cfg))
+    out = cfg.reports_dir / "referee_cards"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "verdict.md").write_text(text + "\n", encoding="utf-8")
+    rows.to_parquet(out / "losses.parquet", index=False)
+    print(text)
+
+
+def _challenge(args: argparse.Namespace) -> None:
+    """Locked model against a challenger on the same weekly folds (ADR 0022)."""
+    from football_edge.evaluation.challenger import compare, run_models, verdict
+
+    cfg = load_config(args.config)
+    matches = load_matches(cfg)
+    models = {"dixon_coles": cfg.models["dixon_coles"], args.model: cfg.models[args.model]}
+    mt = cfg.evaluation.min_train_matches
+    main = run_models(matches, models, 2020, 2025, mt)
+    conf = run_models(matches, models, 2026, 2026, mt)
+    m_cmp = compare(main["dixon_coles"], main[args.model])
+    c_cmp = compare(conf["dixon_coles"], conf[args.model])
+    text, _ = verdict(m_cmp, c_cmp, "dixon_coles", args.model)
+    out = cfg.reports_dir / "challenger" / args.model
+    out.mkdir(parents=True, exist_ok=True)
+    for name, df in {**{f"{k}_2020_25": v for k, v in main.items()},
+                     **{f"{k}_2026": v for k, v in conf.items()}}.items():  # fmt: skip
+        df.to_parquet(out / f"predictions_{name}.parquet", index=False)
+    (out / "verdict.md").write_text(text + "\n", encoding="utf-8")
+    print(text)
+
+
+def _build_confidence(args: argparse.Namespace) -> None:
+    from football_edge.predict.confidence import build_track_record
+    from football_edge.trader.record import build_goal_record
+
+    cfg = load_config(args.config)
+    if not (cfg.reports_dir / "evaluation" / "dixon_coles" / "predictions.parquet").exists():
         raise SystemExit("run `football-edge evaluate --model dixon_coles` first")
-    table = build_track_record(
-        pd.read_parquet(goals),
-        pd.read_parquet(counts) if counts.exists() else None,
-        load_matches(cfg),
-    )
+    goals, counts, calibrated = _confidence_inputs(cfg)
+    table = build_track_record(goals, counts, load_matches(cfg))
     out = cfg.reports_dir / "confidence"
     out.mkdir(parents=True, exist_ok=True)
     table.to_csv(out / "track_record.csv", index=False, float_format="%.4f")
-    preds = pd.read_parquet(goals)
-    if {"exp_home", "exp_away"} <= set(preds.columns):  # the trader desk's extra goal bets
-        from football_edge.models.dixon_coles import DixonColes, DixonColesParams
-        from football_edge.trader.record import build_goal_record
-
-        dc = DixonColes(DixonColesParams.from_dict(dict(cfg.models.get("dixon_coles", {}))))
-        dc.fit(load_matches(cfg))
-        extra = build_goal_record(preds, float(dc.rho))
-        extra.to_csv(out / "track_record_goals.csv", index=False, float_format="%.4f")
-        print(f"extra goal bets: {extra['market'].nunique()} markets, saved alongside")
-    else:
-        print("extra goal bets skipped: re-run `football-edge evaluate --model dixon_coles`")
+    extra = build_goal_record(goals, _current_rho(cfg))  # the trader desk's extra goal bets
+    extra.to_csv(out / "track_record_goals.csv", index=False, float_format="%.4f")
+    print(f"extra goal bets: {extra['market'].nunique()} markets, saved alongside")
+    print("labels built from " + ("CALIBRATED" if calibrated else "raw")
+          + " walk-forward predictions, 2020/21-2025/26")  # fmt: skip
     summary = table.groupby(["source", "market", "label"])["n"].sum().unstack(fill_value=0)
     print(summary.to_string())
     print(f"saved to {out / 'track_record.csv'}")
-
 
 def _simulate(args: argparse.Namespace) -> None:
     import pandas as pd
@@ -789,7 +891,13 @@ def _predict(args: argparse.Namespace) -> None:
         load_fixtures,
         single_fixture,
     )
-    from football_edge.predict.forecast import count_forecasts, fit_for, forecast, market_view
+    from football_edge.predict.forecast import (
+        count_forecasts,
+        fit_for,
+        forecast,
+        load_calibration,
+        market_view,
+    )
 
     cfg = load_config(args.config)
     pc, sc = cfg.predict, cfg.staking
@@ -878,8 +986,10 @@ def _predict(args: argparse.Namespace) -> None:
             f"latest result in our data is {info.last_match:%d %b %Y}, {gap} days before the "
             "first fixture: download the current-season CSVs and run ingest first"
         )
+    goals_cal, cards_cal = load_calibration(cfg)
+    model.calibration = goals_cal
     fc = market_view(forecast(model, fixtures))
-    fc = pd.concat([fc, count_forecasts(history, fixtures)], axis=1)
+    fc = pd.concat([fc, count_forecasts(history, fixtures, cards_cal=cards_cal)], axis=1)
     policy = StakingPolicy.from_dict(sc)
     today = pd.Timestamp.today().normalize()
     log_path = cfg.root / sc.get("log_path", "bets/log.csv")
@@ -1031,7 +1141,12 @@ def _daily(args: argparse.Namespace) -> None:
     except (Exception, SystemExit) as e:
         print(f"settle skipped: {e}")
     _print_scorecard(cfg)
-    print("To make today's log public proof: commit and push records/ (see docs/tracking.md).")
+    if cfg.tracking.get("auto_push", False) and not getattr(args, "no_push", False):
+        from football_edge.tracking.publish import publish
+
+        print(publish(cfg.root))
+    else:
+        print("To make today's log public proof: commit and push records/ (see docs/tracking.md).")
 
 
 def _scorecard(args: argparse.Namespace) -> None:
@@ -1111,7 +1226,8 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=_evaluate)
 
     p = sub.add_parser("tune", help="grid-search settings on the tuning seasons only")
-    p.add_argument("--model", required=True, choices=["dixon_coles"])  # tuning is locked
+    # dixon_coles is tuned and locked; dixon_coles_dynamic is the ADR 0022 challenger
+    p.add_argument("--model", required=True, choices=["dixon_coles", "dixon_coles_dynamic"])
     p.set_defaults(func=_tune)
 
     p = sub.add_parser("stack-test", help="pre-registered test: does the model beat the market?")
@@ -1188,7 +1304,9 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=_news_eval)
 
     p = sub.add_parser("evaluate-counts", help="walk-forward test of corners and cards models")
-    p.add_argument("--seasons", type=int, nargs=2, default=[2020, 2025])
+    p.add_argument("--seasons", type=int, nargs=2, default=[2018, 2025])
+    p.add_argument("--out-name", default="predictions",
+                   help="file name under reports/evaluation/counts (no .parquet)")  # fmt: skip
     p.set_defaults(func=_evaluate_counts)
 
     p = sub.add_parser("update", help="download the latest results and odds, then ingest")
@@ -1197,6 +1315,24 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("schedule", help="full-season schedule from football-data.org")
     p.set_defaults(func=_schedule)
+
+    p = sub.add_parser("build-matches", help="rebuild the processed table from data/raw only")
+    p.set_defaults(func=_build_matches)
+
+    p = sub.add_parser("challenge", help="locked goals model against a challenger (ADR 0022)")
+    p.add_argument("--model", default="dixon_coles_dynamic")
+    p.set_defaults(func=_challenge)
+
+    p = sub.add_parser("referee-test", help="pre-registered referee test for cards (ADR 0021)")
+    p.set_defaults(func=_referee_test)
+
+    p = sub.add_parser("replay-desk", help="replay the trader desk with no future data")
+    p.add_argument("--seasons", type=int, nargs=2, default=[2020, 2025])
+    p.add_argument("--workers", type=int, default=2)
+    p.set_defaults(func=_replay_desk)
+
+    p = sub.add_parser("calibrate", help="pre-registered calibration test and live maps (ADR 0020)")
+    p.set_defaults(func=_calibrate)
 
     p = sub.add_parser("build-confidence", help="track record behind every confidence label")
     p.set_defaults(func=_build_confidence)
@@ -1240,6 +1376,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("daily", help="morning run: update, log predictions, grade, scorecard")
     p.add_argument("--src", type=Path, default=Path("raw data"), help="raw source folder")
     p.add_argument("--no-update", action="store_true", help="skip the download step")
+    p.add_argument("--no-push", action="store_true", help="do not commit and push records/")
     p.set_defaults(func=_daily)
 
     p = sub.add_parser("schedule-daily", help="run `daily` every morning (Windows Task Scheduler)")

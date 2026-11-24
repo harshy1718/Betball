@@ -48,8 +48,12 @@ class History:
     totals: dict[str, np.ndarray]
 
     @classmethod
-    def from_matches(cls, matches: pd.DataFrame, first_season: int = 2020) -> History:
+    def from_matches(cls, matches: pd.DataFrame, first_season: int = 2020,
+                     before: pd.Timestamp | None = None) -> History:  # fmt: skip
+        """`before`: only matches played before this date (replays must not see the future)."""
         m = matches[matches["season"] >= first_season]
+        if before is not None:
+            m = m[m["date"] < before]
         m = m.dropna(subset=["HC", "AC", "HY", "AY", "HR", "AR"])
         return cls(
             hg=m["FTHG"].to_numpy(int),
@@ -101,7 +105,7 @@ def match_chance(
         p_counts *= max(p_lo - p_hi, 0.0)
         ranges[stat] = (lo, hi)
     lift = 1.0
-    if ranges and hist is not None and (goal or len(ranges) > 1):
+    if ranges and hist is not None and len(hist.hg) and (goal or len(ranges) > 1):
         inside = {
             s: (hist.totals[s] > lo) & (hist.totals[s] < hi) for s, (lo, hi) in ranges.items()
         }
@@ -151,8 +155,12 @@ def check(
     month_profit: float = 0.0,
     pending: float = 0.0,
     price: float | None = None,
+    exposure: dict[str, float] | None = None,
 ) -> dict[str, Any]:
-    """Everything the desk shows for one slip. `price`: the site's decimal odds for the slip."""
+    """Everything the desk shows for one slip. `price`: the site's decimal odds for the slip.
+    `exposure`: stake already riding on each match in open saved slips; together with this slip
+    no match may carry more than `staking.max_match_fraction` of the monthly budget (a parlay's
+    whole stake counts against every match in it)."""
     if not legs:
         raise ValueError("an empty slip")
     keys = [x.key for x in legs]
@@ -177,6 +185,20 @@ def check(
     stop = month_profit <= -float(staking.get("stop_loss_fraction", 0.3)) * budget
     left = max(budget + month_profit - pending, 0.0)
     stake = 0.0 if stop else min(float(np.floor(budget * frac / step) * step), left)
+    cap_note = ""
+    cap = float(staking.get("max_match_fraction", 0.0)) * budget
+    if cap > 0 and not stop:
+        exposure = exposure or {}
+        mids = sorted({x.match_id for x in legs})
+        room = min(cap - exposure.get(m, 0.0) for m in mids)
+        room = max(float(np.floor(room / step) * step), 0.0)
+        if room < stake:
+            stake = room
+            busiest = max(mids, key=lambda m: exposure.get(m, 0.0))
+            cap_note = (
+                f"; cut to stay within {cap:,.0f} on one match "
+                f"({exposure.get(busiest, 0.0):,.0f} already riding on it)"
+            )
     kind = (
         "single"
         if len(legs) == 1
@@ -194,7 +216,7 @@ def check(
         "currency": str(staking.get("currency", "")),
         "stake_note": "stop-loss hit this month: no new stakes"
         if stop
-        else f"{frac:.2%} of the monthly budget for a {risk} risk slip",
+        else f"{frac:.2%} of the monthly budget for a {risk} risk slip{cap_note}",
         "price": None,
     }
     if price is not None:

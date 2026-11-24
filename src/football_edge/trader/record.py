@@ -17,8 +17,9 @@ from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
-from scipy.stats import poisson
 
+from football_edge.models.calibration import adjust_draws
+from football_edge.models.dixon_coles import score_grid, score_grids
 from football_edge.predict.confidence import BAND, HIGH_GAP, HIGH_N, LOW_GAP, LOW_N, _skill
 
 MAX_GOALS = 10
@@ -81,16 +82,8 @@ def goal_markets() -> dict[str, list[tuple[str, Test]]]:
 
 
 def grid(lam: float, mu: float, rho: float, max_goals: int = MAX_GOALS) -> np.ndarray:
-    """The Dixon-Coles score grid (same formula as DixonColes.score_matrix)."""
-    g = np.arange(max_goals + 1)
-    m = np.outer(poisson.pmf(g, lam), poisson.pmf(g, mu))
-    m[0, 0] *= 1 - lam * mu * rho
-    m[0, 1] *= 1 + lam * rho
-    m[1, 0] *= 1 + mu * rho
-    m[1, 1] *= 1 - rho
-    m = np.clip(m, 0, None)
-    out: np.ndarray = m / m.sum()
-    return out
+    """The Dixon-Coles score grid (the same function DixonColes.score_matrix uses)."""
+    return score_grid(lam, mu, rho, max_goals)
 
 
 def build_goal_record(
@@ -101,14 +94,14 @@ def build_goal_record(
     h_obs, a_obs = p["goals_home"].to_numpy(int), p["goals_away"].to_numpy(int)
     gh, ga = np.indices((MAX_GOALS + 1, MAX_GOALS + 1))
     markets = goal_markets()
-    probs: dict[tuple[str, str], list[float]] = {
-        (m, s): [] for m, sels in markets.items() for s, _ in sels
+    grids = score_grids(p["exp_home"].to_numpy(float), p["exp_away"].to_numpy(float), rho)
+    if "cal_delta" in p.columns:  # calibrated predictions: each row's own draw adjustment
+        grids = adjust_draws(grids, p["cal_delta"].to_numpy(float))
+    probs = {
+        (m, s): (grids * t(gh, ga)[None]).sum(axis=(1, 2))
+        for m, sels in markets.items()
+        for s, t in sels
     }
-    masks = {(m, s): t(gh, ga) for m, sels in markets.items() for s, t in sels}
-    for lam, mu in zip(p["exp_home"].to_numpy(float), p["exp_away"].to_numpy(float), strict=True):
-        g = grid(lam, mu, rho)
-        for key, mask in masks.items():
-            probs[key].append(float(g[mask].sum()))
     parts = []
     for m, sels in markets.items():
         for s, t in sels:

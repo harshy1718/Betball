@@ -47,6 +47,7 @@ class Config:
     analyst: dict[str, Any]
     trader: dict[str, Any]
     tracking: dict[str, Any]
+    calibration: dict[str, Any]
 
     @property
     def matches_path(self) -> Path:
@@ -89,4 +90,5 @@ def load_config(path: str | Path | None = None, root: Path | None = None) -> Con
         analyst=dict(raw.get("analyst") or {}),
         trader=dict(raw.get("trader") or {}),
         tracking=dict(raw.get("tracking") or {}),
+        calibration=dict(raw.get("calibration") or {}),
     )

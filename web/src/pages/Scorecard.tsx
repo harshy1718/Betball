@@ -233,6 +233,25 @@ function Extras({ card }: { card: Card }) {
           <span className="muted small">No graded slips yet.</span>
         )}
       </section>
+      {card.calibration_check && (
+        <section className="card stack-10" aria-label="Calibration check">
+          <span className="label">Is the calibration helping?</span>
+          <span className="small muted">
+            Nox’s chances are adjusted by a calibration learned from past seasons. The raw, unadjusted chance is logged next to
+            each one; on the same matches, the lower accuracy score wins. Decided at {card.calibration_check.review_at} graded
+            matches.
+          </span>
+          {card.calibration_check.markets.map((m) => (
+            <span key={m.market}>
+              <b>{m.market}</b>: adjusted {m.calibrated?.toFixed(3) ?? "–"}, raw {m.raw?.toFixed(3) ?? "–"}
+            </span>
+          ))}
+          <span>
+            <b>{card.calibration_check.status}</b>{" "}
+            <span className="muted small">({card.calibration_check.matches} matches)</span>
+          </span>
+        </section>
+      )}
       <section className="card stack-10" aria-label="Posted calls">
         <span className="label">Calls posted on Instagram</span>
         <span className="small muted">Only calls marked as posted on the Posts page, hits and misses.</span>

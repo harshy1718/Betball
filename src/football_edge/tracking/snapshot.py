@@ -18,11 +18,15 @@ import pandas as pd
 
 from football_edge.config import Config
 from football_edge.tracking.ledger import Ledger
+from football_edge.tracking.version import stamps
 
 PRED_COLS = [
     "taken_at", "match_id", "league", "kickoff_utc", "home_key", "away_key",
     "market", "sel", "line", "p", "confidence", "skill",
+    "p_raw", "model_commit", "params_sha", "data_sha",
 ]  # fmt: skip
+# Logs written before 25 Nov 2026 have only the first 12 columns (files YYYY-MM.csv); later
+# rows go to YYYY-MM_v2.csv. p_raw = the uncalibrated chance (ADR 0020).
 SLIP_COLS = ["taken_at", "group", "kickoff_utc", "title", "kind", "keys", "labels", "p", "risk"]
 POSTED_COLS = [
     "taken_at", "match_id", "league", "kickoff_utc", "home_key", "away_key", "home", "away",
@@ -54,7 +58,9 @@ def _latest_sigs(old: pd.DataFrame, group: str, cols: list[str]) -> dict[str, st
 
 
 def prediction_rows(matches: list[dict[str, Any]], legs: dict[str, list[Any]],
-                    now: pd.Timestamp) -> pd.DataFrame:  # fmt: skip
+                    now: pd.Timestamp, stamp: dict[str, str] | None = None
+                    ) -> pd.DataFrame:  # fmt: skip
+    stamp = stamp or {"model_commit": "", "params_sha": "", "data_sha": ""}
     rows = []
     for m in matches:
         if pd.Timestamp(m["kickoff_utc"]) <= now:
@@ -65,6 +71,8 @@ def prediction_rows(matches: list[dict[str, Any]], legs: dict[str, list[Any]],
                 "home_key": x.home_key, "away_key": x.away_key, "market": x.market,
                 "sel": x.sel, "line": "" if x.line is None else f"{x.line:g}",
                 "p": f"{x.p:.4f}", "confidence": x.confidence, "skill": str(bool(x.skill)),
+                "p_raw": "" if getattr(x, "p_raw", None) is None else f"{x.p_raw:.4f}",
+                **stamp,
             })  # fmt: skip
     return pd.DataFrame(rows, columns=PRED_COLS[1:])
 
@@ -101,7 +109,7 @@ def take_snapshot(cfg: Config, desk: Any, now: pd.Timestamp | None = None) -> di
     out = {"predictions": 0, "slips": 0}
 
     matches, legs = desk.legs_by_match()
-    preds = prediction_rows(matches, legs, now)
+    preds = prediction_rows(matches, legs, now, stamps(cfg))
     if len(preds):
         cols = ["market", "sel", "line", "p", "confidence"]
         old = _latest_sigs(books["predictions"].read(), "match_id", cols)

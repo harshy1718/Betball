@@ -484,7 +484,7 @@ export default function Desk() {
               <section aria-label="Top of the board" className="stack-14">
                 <div className="section-head">
                   <h2>Top of the board</h2>
-                  <span className="legend">Next 3 days · corners and odd/even left out (no skill) · correct scores only as singles</span>
+                  <span className="legend">Next 3 days · odd/even left out (no skill) · correct scores only as singles</span>
                 </div>
                 <div className="cards slips">
                   {board.data.top.map((s) => (

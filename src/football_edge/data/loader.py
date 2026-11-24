@@ -94,6 +94,9 @@ def parse_file(path: Path, cfg: Config) -> pd.DataFrame:
     )
     for c in _KEEP:
         t[c] = df[c] if c in df.columns else pd.NA
+    # The referee is named before kickoff, so unlike the stats above it is pre-match
+    # information. Premier League files only (ADR 0021).
+    t["referee"] = df["Referee"].astype("string").str.strip() if "Referee" in df.columns else pd.NA
     t[["close_h", "close_d", "close_a"]] = close[["h", "d", "a"]]
     t["close_src"] = close["src"]
     t[["pre_h", "pre_d", "pre_a"]] = pre[["h", "d", "a"]]

@@ -219,6 +219,41 @@ def accuracy(g: pd.DataFrame, base: Baseline, min_n: int) -> dict[str, Any]:
             "markets": markets, "calibration": bands, "confidence": conf}  # fmt: skip
 
 
+CAL_MARKETS = ("1x2", "ou25", "btts")
+CAL_REVIEW_AT = 300  # ADR 0020: graded matches before the live calibration check decides
+
+
+def calibration_check(graded: pd.DataFrame) -> dict[str, Any] | None:
+    """ADR 0020 live check: Brier of the calibrated chances against the raw ones logged next to
+    them, summed over match result, over/under 2.5 and both-score, on the same predictions."""
+    if graded.empty or "p_raw" not in graded.columns:
+        return None
+    q = graded[graded["market"].isin(CAL_MARKETS) & (graded["p_raw"].astype(str) != "")]
+    q = q[[canonical(m, x) for m, x in zip(q["market"], q["sel"], strict=True)]]
+    if q.empty:
+        return None
+    y = q["won"].astype(float).to_numpy()
+    cal_b, raw_b = 0.0, 0.0
+    per = []
+    for m in CAL_MARKETS:
+        d = q["market"].to_numpy() == m
+        if not d.any():
+            continue
+        c = _brier(q["p"].astype(float).to_numpy()[d], y[d])
+        r = _brier(q["p_raw"].astype(float).to_numpy()[d], y[d])
+        cal_b, raw_b = cal_b + c, raw_b + r
+        per.append({"market": NAMES[m], "calibrated": _num(c), "raw": _num(r)})
+    n = int(q["match_id"].nunique())
+    if n < CAL_REVIEW_AT:
+        status = f"Collecting: {n} of {CAL_REVIEW_AT} graded matches before the check decides"
+    elif cal_b <= raw_b:
+        status = "Calibration is helping: keep it"
+    else:
+        status = "Calibration is not helping on live matches: switch it off (ADR 0020)"
+    return {"matches": n, "calibrated": _num(cal_b), "raw": _num(raw_b), "markets": per,
+            "review_at": CAL_REVIEW_AT, "status": status}  # fmt: skip
+
+
 def verdict(r: dict[str, Any], min_n: int) -> str:
     if r["n"] < min_n:
         return f"Too few to judge yet ({r['n']} of {min_n} needed)"
@@ -345,6 +380,7 @@ def build(cfg: Config, matches: pd.DataFrame, now: pd.Timestamp | None = None) -
         "recent": recent_matches(graded),
         **acc,
         "slips": slip_record(books["slips"].read(), preds, results),
+        "calibration_check": calibration_check(graded),
         "posted": {
             "n": len(posts),
             "settled": len(done),

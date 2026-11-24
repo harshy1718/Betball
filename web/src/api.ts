@@ -37,7 +37,6 @@ export interface MatchDetail extends MatchSummary {
   goals_call: { text: string; p: number; confidence: string; why: string };
   top_scores: { score: string; p: number }[];
   grid: number[][];
-  corners: { expected: number | null; over_9_5: number | null };
   cards: { expected: number | null; over_3_5: number | null; over_4_5: number | null; red: number | null };
   form: Record<"home" | "away", { results: string[]; scored: number; conceded: number }>;
   meetings: { date: string; home: string; away: string; score: string }[];
@@ -233,6 +232,14 @@ export interface Scorecard {
   confidence: { label: string; n: number; avg_p: number | null; hit: number | null; gap: number | null }[];
   slips: { title: string; n: number; expected: number | null; hit: number | null; won: number; floor: number | null }[];
   posted: { n: number; settled: number; won: number };
+  calibration_check: {
+    matches: number;
+    calibrated: number | null;
+    raw: number | null;
+    markets: { market: string; calibrated: number | null; raw: number | null }[];
+    review_at: number;
+    status: string;
+  } | null;
   log_ok: boolean;
   log_problems: { taken_at: string; file: string; what: string }[];
 }

@@ -47,6 +47,8 @@ def walk_forward_counts(matches: pd.DataFrame, folds: list[Fold]) -> pd.DataFram
                 out[f"exp_{name}"] = lam + mu
                 for line in lines:
                     out[f"p_{name}_{line}"] = m.p_over(hidden, line)
+                # dispersion of the totals, per row (ADR 0020 calibration needs it)
+                out[f"k_{name}"] = [m.k.get(lg, float("inf")) for lg in test["league"]]
             parts.append(out)
         if n % 50 == 0:
             log.info("counts: %d/%d folds", n, len(folds))

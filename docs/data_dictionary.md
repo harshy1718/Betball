@@ -12,6 +12,8 @@
 | HST, AST | shots on target (home, away) |
 | close_h/d/a | decimal closing odds (1X2); source in `close_src` (PS = Pinnacle, Avg = market average) |
 | pre_h/d/a | earlier snapshot odds; source in `pre_src` |
+| HC, AC / HY, AY / HR, AR | corners, yellow cards, red cards per side |
+| referee | the match referee (Premier League only; empty for Serie A and La Liga). Named before kickoff, so it is pre-match information. Tested for cards and rejected (ADR 0021) |
 
 Caveats: BTTS has no historical odds. Over/Under 2.5 closing odds exist only from 2019/20 (not yet in this table). `pre_*` is not a true opening price. 2025/26 and 2026/27 mix Pinnacle and average closes; check `close_src` before comparing seasons.
 

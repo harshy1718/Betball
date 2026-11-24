@@ -52,7 +52,7 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -61,6 +61,9 @@ from scipy.optimize import minimize
 from scipy.stats import poisson
 
 from football_edge.models.base import Probs
+
+if TYPE_CHECKING:
+    from football_edge.models.calibration import GoalCalibration
 
 FloatArr = npt.NDArray[np.float64]
 IntArr = npt.NDArray[np.intp]
@@ -80,6 +83,11 @@ class DixonColesParams:
     h2h_years: float = 5.0
     h2h_shrink: float = 2.0  # pseudo-meetings of "no signal" added to the denominator
     covariates: tuple[str, ...] = ()  # feature groups from COVARIATE_GROUPS (ADR 0007)
+    # Dynamic ratings (ADR 0022): > 0 = a team's attack and defence may change every
+    # `dynamic_weeks` weeks, as a random walk whose steps are held back by `rw` (bigger = slower
+    # change). 0 = one rating per team (the locked model).
+    dynamic_weeks: int = 0
+    rw: float = 0.0
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> DixonColesParams:
@@ -133,12 +141,93 @@ def tau(x: IntArr, y: IntArr, lam: FloatArr, mu: FloatArr, rho: float) -> FloatA
     return np.asarray(t, dtype=np.float64)
 
 
+# The grid is built far enough out that the probability left beyond it is below ~1e-9 (at
+# least TAIL_GOALS), then every score above max_goals is folded
+# into the last row/column, so the edge cell means "max_goals or more". Nothing is thrown away
+# and nothing is spread over the other scores (a 12-1 still counts as a home win and as over
+# any line the desk uses). With expected goals up to ~4 the mass beyond max_goals is ~0.3%.
+TAIL_GOALS = 12
+
+
+def _reach(lmax: float, max_goals: int) -> int:
+    """Goals per side to build so the mass left beyond is negligible (Poisson tail)."""
+    return max(TAIL_GOALS, max_goals, int(np.ceil(lmax + 8 * np.sqrt(lmax) + 8)))
+
+
+class InvalidGridError(ValueError):
+    """The low-score correction made a score probability negative: rho is out of range for
+    these expected goals. Raised instead of silently clipping."""
+
+
+def score_grid(lam: float, mu: float, rho: float, max_goals: int = 10) -> FloatArr:
+    """P(home goals = i, away goals = j), i, j in 0..max_goals (edge = max_goals or more)."""
+    if not (np.isfinite(lam) and np.isfinite(mu)) or lam <= 0 or mu <= 0:
+        raise InvalidGridError(f"expected goals must be positive, got {lam}, {mu}")
+    factors = (1 - lam * mu * rho, 1 + lam * rho, 1 + mu * rho, 1 - rho)
+    if min(factors) < 0:
+        raise InvalidGridError(
+            f"rho={rho:.4f} makes a low score negative at expected goals {lam:.2f}-{mu:.2f}"
+        )
+    g = np.arange(_reach(max(lam, mu), max_goals) + 1)
+    m = np.outer(poisson.pmf(g, lam), poisson.pmf(g, mu))
+    m[0, 0] *= factors[0]
+    m[0, 1] *= factors[1]
+    m[1, 0] *= factors[2]
+    m[1, 1] *= factors[3]
+    k = max_goals
+    out = np.empty((k + 1, k + 1))
+    out[:k, :k] = m[:k, :k]
+    out[k, :k] = m[k:, :k].sum(axis=0)
+    out[:k, k] = m[:k, k:].sum(axis=1)
+    out[k, k] = m[k:, k:].sum()
+    grid: FloatArr = out / out.sum()
+    return grid
+
+
+def score_grids(lam: FloatArr, mu: FloatArr, rho: float, max_goals: int = 10) -> FloatArr:
+    """score_grid for many matches at once: shape (n, max_goals+1, max_goals+1)."""
+    lam, mu = np.asarray(lam, dtype=np.float64), np.asarray(mu, dtype=np.float64)
+    if len(lam) > 2000:  # keep memory small: the internal grid is ~25 x 25 per match
+        parts = [
+            score_grids(lam[i : i + 2000], mu[i : i + 2000], rho, max_goals)
+            for i in range(0, len(lam), 2000)
+        ]
+        return np.concatenate(parts)
+    if (lam <= 0).any() or (mu <= 0).any() or not np.isfinite(lam + mu).all():
+        raise InvalidGridError("expected goals must be positive and finite")
+    f = np.stack([1 - lam * mu * rho, 1 + lam * rho, 1 + mu * rho, np.full_like(lam, 1 - rho)])
+    if (f < 0).any():
+        raise InvalidGridError(f"rho={rho:.4f} makes a low score negative for some matches")
+    g = np.arange(_reach(float(max(lam.max(), mu.max())), max_goals) + 1)
+    m = poisson.pmf(g[None, :], lam[:, None])[:, :, None] * poisson.pmf(g[None, :], mu[:, None])[
+        :, None, :
+    ]
+    m[:, 0, 0] *= f[0]
+    m[:, 0, 1] *= f[1]
+    m[:, 1, 0] *= f[2]
+    m[:, 1, 1] *= f[3]
+    k = max_goals
+    out = np.empty((len(lam), k + 1, k + 1))
+    out[:, :k, :k] = m[:, :k, :k]
+    out[:, k, :k] = m[:, k:, :k].sum(axis=1)
+    out[:, :k, k] = m[:, :k, k:].sum(axis=2)
+    out[:, k, k] = m[:, k:, k:].sum(axis=(1, 2))
+    grids: FloatArr = out / out.sum(axis=(1, 2), keepdims=True)
+    return grids
+
+
+_EPOCH = pd.Timestamp("2015-07-06")  # a Monday: dynamic rating periods count from here
+
+
 class DixonColes:
     name = "dixon_coles"
 
     def __init__(self, params: DixonColesParams | None = None) -> None:
         self.params = params or DixonColesParams()
         self._fitted = False
+        # Optional calibration (models/calibration.py, ADR 0020); None = raw model, as in
+        # every walk-forward evaluation.
+        self.calibration: GoalCalibration | None = None
 
     # ------------------------------------------------------------------ helpers
     def _no_crowd(self, dates: pd.Series) -> FloatArr:
@@ -286,6 +375,45 @@ class DixonColes:
         lg_i = df["league"].map(self._league_idx).to_numpy()
         h_i = np.array([self._team_idx[k] for k in zip(df.league, df.home, strict=True)])
         a_i = np.array([self._team_idx[k] for k in zip(df.league, df.away, strict=True)])
+        team_h, team_a = h_i, a_i
+        links = np.zeros((0, 3))  # dynamic: (earlier period, later period, 1 / gap)
+        last_of = np.arange(n_t)  # dynamic: each team's latest period
+        if p.dynamic_weeks > 0:
+            if p.use_h2h or p.covariates:
+                raise ValueError("dynamic ratings are not combined with h2h or covariates")
+            per = ((df["date"] - _EPOCH).dt.days // (7 * p.dynamic_weeks)).to_numpy()
+            pairs = sorted(set(zip(h_i, per, strict=True)) | set(zip(a_i, per, strict=True)))
+            tp_idx = {k: i for i, k in enumerate(pairs)}
+            h_i = np.array([tp_idx[k] for k in zip(h_i, per, strict=True)])
+            a_i = np.array([tp_idx[k] for k in zip(a_i, per, strict=True)])
+            # Team-period priors: a spell's first period is pulled towards the team's prior
+            # (promoted average if it entered the league after the data starts); every later
+            # period is linked to the one before, with a pull weakened by the gap between them
+            # (a random walk's variance grows with time).
+            per_season = {(int(t), int(q)): int(s) for t, q, s in zip(
+                np.r_[team_h, team_a], np.r_[per, per],
+                np.r_[df["season"].to_numpy(), df["season"].to_numpy()], strict=True)}  # fmt: skip
+            first_season = int(df["season"].min())
+            starts, link_rows = [], []
+            prev: dict[int, tuple[int, int]] = {}
+            for t, q in pairs:
+                i = tp_idx[(t, q)]
+                s = per_season[(int(t), int(q))]
+                if t in prev and s - per_season[(int(t), prev[t][0])] <= 1:
+                    link_rows.append((prev[t][1], i, 1.0 / (q - prev[t][0])))
+                else:
+                    starts.append((i, t, s))
+                prev[t] = (int(q), i)
+            links = np.array(link_rows, dtype=float).reshape(-1, 3)
+            prior_att = np.zeros(len(pairs))
+            prior_def = np.zeros(len(pairs))
+            start_mask = np.zeros(len(pairs), dtype=bool)
+            for i, _t, s in starts:
+                start_mask[i] = True
+                if s > first_season:
+                    prior_att[i], prior_def[i] = self._prior_att, self._prior_def
+            last_of = np.array([prev[t][1] for t in range(n_t)])
+            n_t = len(pairs)
         x = df["FTHG"].to_numpy(dtype=np.intp)
         y = df["FTAG"].to_numpy(dtype=np.intp)
         tx, ty = self._targets(df, x, y)
@@ -354,12 +482,21 @@ class DixonColes:
 
             nll = -float(np.sum(w * ll))
             d_att, d_def = att - prior_att, dfn - prior_def
+            if p.dynamic_weeks > 0:  # ridge only where a spell starts; the walk does the rest
+                d_att, d_def = d_att * start_mask, d_def * start_mask
             pen = p.ridge * (
                 np.sum(d_att**2) + np.sum(d_def**2) + c**2 + g_gd**2 + g_tot**2 + beta @ beta
             )
             g = -grad
             g[o_att:o_def] += 2 * p.ridge * d_att
             g[o_def:o_g] += 2 * p.ridge * d_def
+            if len(links):
+                i0, i1, wl = links[:, 0].astype(int), links[:, 1].astype(int), links[:, 2]
+                for o in (o_att, o_def):
+                    d = theta[o + i1] - theta[o + i0]
+                    pen += p.rw * float(np.sum(wl * d**2))
+                    np.add.at(g, o + i1, 2 * p.rw * wl * d)
+                    np.add.at(g, o + i0, -2 * p.rw * wl * d)
             g[o_g] += 2 * p.ridge * g_gd
             g[o_g + 1] += 2 * p.ridge * g_tot
             g[o_c] += 2 * p.ridge * c
@@ -380,7 +517,9 @@ class DixonColes:
         th = res.x
         self.mu_l, self.hfa = th[o_mu:o_h], th[o_h:o_c]
         self.c, self.rho = float(th[o_c]), float(th[o_rho])
-        self.attack, self.defence = th[o_att:o_def], th[o_def:o_g]
+        self.attack, self.defence = th[o_att:o_def][last_of], th[o_def:o_g][last_of]
+        if p.dynamic_weeks > 0:  # every period's ratings, for inspection
+            self.attack_path, self.defence_path = th[o_att:o_def], th[o_def:o_g]
         self.gamma_gd, self.gamma_tot = float(th[o_g]), float(th[o_g + 1])
         self.beta = th[o_b:]
         names = [n for g in p.covariates for n in COVARIATE_GROUPS[g][2]]
@@ -416,19 +555,31 @@ class DixonColes:
         if self.params.covariates:
             xh, xa = covariate_design(test, self.params.covariates)
             lam, mu = lam * np.exp(xh @ self.beta), mu * np.exp(xa @ self.beta)
+        if self.calibration is not None:
+            lam, mu = self.calibration.expected(lam, mu)
         return lam, mu
 
+    def raw_expected_goals(self, test: pd.DataFrame) -> tuple[FloatArr, FloatArr]:
+        """Expected goals before any calibration (for the log's raw chances)."""
+        cal, self.calibration = self.calibration, None
+        try:
+            return self.expected_goals(test)
+        finally:
+            self.calibration = cal
+
+    def raw_score_matrix(self, lam: float, mu: float) -> FloatArr:
+        """The uncalibrated grid for raw expected goals."""
+        return score_grid(lam, mu, self.rho, self.params.max_goals)
+
     def score_matrix(self, lam: float, mu: float) -> FloatArr:
-        """P(home goals = i, away goals = j) for i, j in 0..max_goals, normalised."""
-        g = np.arange(self.params.max_goals + 1)
-        m = np.outer(poisson.pmf(g, lam), poisson.pmf(g, mu))
-        m[0, 0] *= 1 - lam * mu * self.rho
-        m[0, 1] *= 1 + lam * self.rho
-        m[1, 0] *= 1 + mu * self.rho
-        m[1, 1] *= 1 - self.rho
-        m = np.clip(m, 0, None)
-        out: FloatArr = m / m.sum()
-        return out
+        """P(home goals = i, away goals = j) for i, j in 0..max_goals (edge = that or more).
+
+        `lam`, `mu` are expected goals as `expected_goals` returns them (calibrated when a
+        calibration is attached); the calibration's draw adjustment is applied here."""
+        grid = score_grid(lam, mu, self.rho, self.params.max_goals)
+        if self.calibration is not None:
+            grid = self.calibration.adjust_grid(grid)
+        return grid
 
     def predict_extra(self, test: pd.DataFrame) -> dict[str, FloatArr]:
         """Goals markets from the same score grid: over 2.5, both teams to score."""

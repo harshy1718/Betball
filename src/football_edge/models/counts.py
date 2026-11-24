@@ -56,6 +56,7 @@ class CountParams:
     xi: float = 0.0025  # same time decay as the goals model
     ridge: float = 1.0
     team_effects: bool = True
+    referee_effects: bool = False  # ADR 0021: + ref[referee] on both sides' log rates
 
 
 class TeamCountModel:
@@ -78,6 +79,14 @@ class TeamCountModel:
         )
         self._team_idx = {k: i for i, k in enumerate(keys)}
         n_l, n_t = len(leagues), len(keys) if p.team_effects else 0
+        refs: list[str] = []
+        if p.referee_effects and "referee" in df.columns:
+            refs = sorted(str(r) for r in df["referee"].dropna().unique())
+        self._ref_idx = {r: i for i, r in enumerate(refs)}
+        n_r = len(refs)
+        r_i = np.array([self._ref_idx.get(str(r), -1) if pd.notna(r) else -1
+                        for r in (df["referee"] if n_r else [None] * len(df))])  # fmt: skip
+        has_r = r_i >= 0
         lg_i = df["league"].map(self._league_idx).to_numpy()
         h_i = np.array([self._team_idx[k] for k in zip(df.league, df.home, strict=True)])
         a_i = np.array([self._team_idx[k] for k in zip(df.league, df.away, strict=True)])
@@ -86,16 +95,20 @@ class TeamCountModel:
         age = (df["date"].max() - df["date"]).dt.days.to_numpy(dtype=np.float64)
         w = np.exp(-p.xi * age)
         o_h, o_own, o_opp = n_l, 2 * n_l, 2 * n_l + n_t
-        n_par = 2 * n_l + 2 * n_t
+        o_ref = 2 * n_l + 2 * n_t
+        n_par = o_ref + n_r
 
         def objective(th: FloatArr) -> tuple[float, FloatArr]:
             mu, hfa = th[:o_h], th[o_h:o_own]
             eta_h = mu[lg_i] + hfa[lg_i]
             eta_a = mu[lg_i].copy()
             if n_t:
-                own, opp = th[o_own:o_opp], th[o_opp:]
+                own, opp = th[o_own:o_opp], th[o_opp:o_ref]
                 eta_h = eta_h + own[h_i] + opp[a_i]
                 eta_a = eta_a + own[a_i] + opp[h_i]
+            if n_r:
+                rr = np.where(has_r, th[o_ref:][np.maximum(r_i, 0)], 0.0)
+                eta_h, eta_a = eta_h + rr, eta_a + rr
             lam, lmu = np.exp(eta_h), np.exp(eta_a)
             nll = -float(np.sum(w * (x * eta_h - lam + y * eta_a - lmu)))
             g_h, g_a = w * (x - lam), w * (y - lmu)
@@ -106,12 +119,14 @@ class TeamCountModel:
                 grad[o_own:o_opp] = np.bincount(h_i, g_h, minlength=n_t) + np.bincount(
                     a_i, g_a, minlength=n_t
                 )
-                grad[o_opp:] = np.bincount(a_i, g_h, minlength=n_t) + np.bincount(
+                grad[o_opp:o_ref] = np.bincount(a_i, g_h, minlength=n_t) + np.bincount(
                     h_i, g_a, minlength=n_t
                 )
+            if n_r:
+                grad[o_ref:] = np.bincount(r_i[has_r], (g_h + g_a)[has_r], minlength=n_r)
             g = -grad
             pen = 0.0
-            if n_t:
+            if n_t or n_r:
                 eff = th[o_own:]
                 pen = p.ridge * float(eff @ eff)
                 g[o_own:] += 2 * p.ridge * eff
@@ -123,7 +138,8 @@ class TeamCountModel:
         th = res.x
         self.mu_l, self.hfa = th[:o_h], th[o_h:o_own]
         self.own = th[o_own:o_opp] if n_t else np.zeros(0)
-        self.opp = th[o_opp:] if n_t else np.zeros(0)
+        self.opp = th[o_opp:o_ref] if n_t else np.zeros(0)
+        self.ref = th[o_ref:] if n_r else np.zeros(0)
         self.converged = bool(res.success)
         self._fitted = True
 
@@ -138,6 +154,7 @@ class TeamCountModel:
 
     def _rates(self, df: pd.DataFrame) -> tuple[FloatArr, FloatArr]:
         lam, mu = np.empty(len(df)), np.empty(len(df))
+        refs = df["referee"].tolist() if "referee" in df.columns else [None] * len(df)
         rows = df[["league", "home", "away"]].itertuples(index=False, name=None)
         for k, (lg, h, a) in enumerate(rows):
             li = self._league_idx.get(lg)
@@ -148,8 +165,11 @@ class TeamCountModel:
             own_a = float(self.own[ai]) if ai is not None and len(self.own) else 0.0
             opp_h = float(self.opp[hi]) if hi is not None and len(self.opp) else 0.0
             opp_a = float(self.opp[ai]) if ai is not None and len(self.opp) else 0.0
-            lam[k] = np.exp(base + hfa + own_h + opp_a)
-            mu[k] = np.exp(base + own_a + opp_h)
+            known = refs[k] is not None and pd.notna(refs[k])
+            ri = self._ref_idx.get(str(refs[k])) if known else None
+            rr = float(self.ref[ri]) if ri is not None and len(self.ref) else 0.0
+            lam[k] = np.exp(base + hfa + own_h + opp_a + rr)
+            mu[k] = np.exp(base + own_a + opp_h + rr)
         return lam, mu
 
     def expected(self, test: pd.DataFrame) -> tuple[FloatArr, FloatArr]:

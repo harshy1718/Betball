@@ -14,6 +14,7 @@ from football_edge.predict.forecast import (
     count_forecasts,
     fit_for,
     forecast,
+    load_calibration,
     market_view,
 )
 
@@ -31,8 +32,11 @@ def forecast_with_model(
     """As forecast_fixtures, plus the fitted model (for exact score probabilities)."""
     model_name = cfg.predict.get("model", "dixon_coles")
     model, info = fit_for(history, fixtures, cfg.models.get(model_name, {}))
+    goals_cal, cards_cal = load_calibration(cfg)
+    model.calibration = goals_cal
     fc = market_view(forecast(model, fixtures))
-    return pd.concat([fc, count_forecasts(history, fixtures)], axis=1), info, model
+    counts = count_forecasts(history, fixtures, cards_cal=cards_cal)
+    return pd.concat([fc, counts], axis=1), info, model
 
 
 def attach_prices(

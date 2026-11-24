@@ -20,7 +20,20 @@ Every model implements the `Model` protocol in `models/base.py`: `fit(train)` th
 |---|---|---|
 | Team-blind (league H/D/A rates) | `team_blind.py` | done |
 | Elo + multinomial logistic mapping | `elo.py` | done |
-| Dixon-Coles (goals model, time decay, promoted-team prior) | `dixon_coles.py` | done, untuned |
+| Dixon-Coles (goals model, time decay, promoted-team prior) | `dixon_coles.py` | done, tuned and locked |
+| Corners/cards count models (negative binomial totals) | `counts.py` | cards live; corners not used |
+| Calibration of goals and cards (ADR 0020) | `calibration.py` | live; maps in `reports/calibration/` |
+
+Calibration sits between the models and everything that reads them: the raw model is what every
+walk-forward test measures; `football-edge calibrate` fits the maps on out-of-sample seasons,
+tests them as pre-registered and marks them adopted; forecasts then attach them
+(`predict/forecast.py: load_calibration`). The prediction model never knows how its chances
+are used: the desk builds slips from them, the tracking log grades them.
+
+Research commands added 25 Nov 2026: `calibrate` (ADR 0020), `replay-desk` (the desk on past
+seasons with nothing from the future), `referee-test` (ADR 0021), `challenge --model <name>`
+(the locked goals model against a challenger on the same weekly folds; ADR 0022 tested
+dynamic ratings with it and kept the locked model).
 
 Run one: `football-edge evaluate --model elo`. Output in `reports/evaluation/<model>/`: `summary.csv` (kept in git), `predictions.parquet` (rebuilt, ignored), `run.json` (git SHA, parameters, data hash).
 

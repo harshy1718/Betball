@@ -33,3 +33,7 @@ reports/simulation/bets_*.csv
 data/upcoming/
 # Ask Nox chat log (personal, never committed)
 reports/analyst/web_chat_log.jsonl
+# other generated prediction files and replay outputs (rebuild with calibrate / replay-desk / referee-test)
+reports/**/predictions_*.parquet
+reports/replay/slips.parquet
+reports/referee_cards/losses.parquet

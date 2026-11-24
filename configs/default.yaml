@@ -72,6 +72,16 @@ models:
     min_promoted_matches: 5
     shots_weight: 0.25
     covariates: [trust]
+  dixon_coles_dynamic:      # challenger: ratings that move over time (ADR 0022)
+    xi: 0.0                 # tuned on 2018-19 (reports/tuning/dixon_coles_dynamic.csv), locked
+    ridge: 1.0
+    max_goals: 10
+    no_crowd_start: "2020-06-01"
+    no_crowd_end: "2021-05-31"
+    min_promoted_matches: 5
+    shots_weight: 0.25
+    dynamic_weeks: 8        # tuned, locked: ratings may change every 8 weeks
+    rw: 160.0               # tuned, locked (the slowest change in the grid won)
   dixon_coles_manager:      # dixon_coles + new-manager flag (ADR 0007); nothing retuned
     xi: 0.0025
     ridge: 1.0
@@ -90,6 +100,12 @@ tuning:
       xi: [0.0019, 0.0025, 0.0035]
       ridge: [1.0, 2.0, 4.0]
       shots_weight: [0.0, 0.25, 0.5, 0.75, 1.0]
+  dixon_coles_dynamic:      # ADR 0022, pre-registered grid
+    seasons: [2018, 2019]
+    grid:
+      dynamic_weeks: [4, 8]
+      rw: [10.0, 40.0, 160.0]
+      xi: [0.0, 0.0025]
 predict:
   model: dixon_coles        # the evaluated model; predict uses its locked settings unchanged
   odds_source: Avg          # for football-data fixtures.csv: Avg, Max, B365 or PS prices
@@ -164,11 +180,10 @@ trader:                     # private trader desk (docs/trader.md, ADR 0018): Ha
   parlay_min_cost: 0.05     # every leg must cut the chance by 5+ points (no passengers)
   parlay_leg_max: 0.95      # legs up to 95% may sit inside a parlay
   parlay_pool: 12           # strongest legs per match considered
-  include_corners: false    # corners: the model has no skill over the league average (ADR 0008)
+  include_corners: false    # corners are no longer forecast at all (ADR 0020): no skill
   no_skill_markets: [corners, oddeven]  # always weak: no model skill (ADR 0008, ADR 0018)
   count_lines:              # the lines Harsh's site offers (22 Nov 2026), over and under
     cards: [3.5, 4.5, 5.5]
-    corners: [8.5, 9.5, 10.5]
   stake_by_risk:            # share of staking.monthly_budget per slip, by risk grade
     Low: 0.02
     Medium: 0.01
@@ -194,7 +209,15 @@ tracking:                   # live prediction log and scorecard (docs/tracking.m
   slips_dir: bets/desk_log              # private (bets/ is never committed): the desk's slips
   baseline_years: 3         # plain baseline = the league's own rate over the previous 3 years
   min_sample: 30            # below this many graded predictions a figure is "too few to judge"
+  auto_push: true           # the daily run commits records/ (only records/) and pushes it, so
+                            # GitHub's push time dates every block (ADR 0019 amendment)
   strong:                   # a strong call (posts page), from the 2020-26 track record only:
     min_hit: 0.65           # every past chance level from the call's up came true 65%+ ...
     min_band_n: 30          # ... (levels with 30+ past calls count) ...
-    min_class_n: 100        # ... and 100+ past calls in total. Today: favourites at 60%+
+    min_class_n: 100        # ... and 100+ past calls in total. Since calibration (ADR 0020):
+                            # favourites at 65%+ and over/under 2.5 at 65%+
+
+calibration:                # ADR 0020: goals and cards calibration, fitted on earlier seasons only
+  enabled: true             # false = raw model numbers everywhere
+  path: reports/calibration/calibration.json  # written by `football-edge calibrate`; only maps
+                            # that passed the pre-registered test are marked adopted and used

@@ -44,7 +44,8 @@ class Problem:
 
 
 class Ledger:
-    """One append-only log: monthly files `<dir>/<YYYY-MM>.csv` plus `<dir>/chain.csv`."""
+    """One append-only log: monthly files `<dir>/<YYYY-MM>.csv` plus `<dir>/chain.csv` (a month
+    can also have `<YYYY-MM>_v2.csv` if the columns changed during it)."""
 
     def __init__(self, folder: Path, columns: list[str]) -> None:
         if columns[0] != "taken_at":
@@ -68,14 +69,15 @@ class Ledger:
         """Add one block of rows (all stamped `taken_at`). Returns the number of rows."""
         if df.empty:
             return 0
-        df = df.assign(taken_at=taken_at)[self.columns]
+        df = df.assign(taken_at=taken_at)
+        df = df.assign(**{c: "" for c in self.columns if c not in df.columns})[self.columns]
         rows = [["" if pd.isna(v) else str(v) for v in r] for r in df.itertuples(index=False)]
         lines = _rows_text(rows)
         block = _sha("\n".join(lines))
         prev = self._last_chain()
         chain = _sha(prev + block)
         self.folder.mkdir(parents=True, exist_ok=True)
-        path = self.folder / f"{taken_at[:7]}.csv"
+        path = self._file_for(taken_at[:7])
         new = not path.exists()
         with path.open("a", encoding="utf-8", newline="") as fh:
             if new:
@@ -88,6 +90,20 @@ class Ledger:
             fh.write(",".join([taken_at, path.name, str(len(lines)), block, chain]) + "\n")
         return len(lines)
 
+    def _file_for(self, month: str) -> Path:
+        """`<month>.csv`, or `<month>_v2.csv`, `_v3`... when an older file of that month has
+        different columns (the log gained columns): old files are never rewritten."""
+        header = ",".join(self.columns)
+        n = 1
+        while True:
+            path = self.folder / (f"{month}.csv" if n == 1 else f"{month}_v{n}.csv")
+            if not path.exists():
+                return path
+            with path.open(encoding="utf-8") as fh:
+                if fh.readline().rstrip("\r\n") == header:
+                    return path
+            n += 1
+
     def files(self) -> list[Path]:
         if not self.folder.exists():
             return []
@@ -97,7 +113,11 @@ class Ledger:
         parts = [pd.read_csv(p, dtype=str, keep_default_na=False) for p in self.files()]
         if not parts:
             return pd.DataFrame(columns=self.columns)
-        return pd.concat(parts, ignore_index=True)
+        out = pd.concat(parts, ignore_index=True)  # older files lack newer columns: blank
+        for c in self.columns:
+            if c not in out.columns:
+                out[c] = ""
+        return out.fillna("")
 
     def verify(self) -> list[Problem]:
         """Every block in the files must match its chain line, in order, and every chain hash

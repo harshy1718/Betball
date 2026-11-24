@@ -58,6 +58,7 @@ class Leg:
     p: float
     confidence: str
     skill: bool
+    p_raw: float | None = None  # the uncalibrated chance, for the prediction log (ADR 0020)
 
     @property
     def key(self) -> str:
@@ -176,6 +177,16 @@ class LegFactory:
         hn, an = info["home"], info["away"]
         ph, pd_, pa = float(f["p_h"]), float(f["p_d"]), float(f["p_a"])
         legs: list[Leg] = []
+        # The raw (uncalibrated) grid, when the forecast was calibrated: kept for the log.
+        raw_grid = None
+        if (model is not None and getattr(model, "calibration", None) is not None
+                and "raw_exp_home" in f.index and pd.notna(f["raw_exp_home"])):  # fmt: skip
+            raw_grid = model.raw_score_matrix(float(f["raw_exp_home"]), float(f["raw_exp_away"]))
+        def raw_of(market: str, sel: str, line: float | None) -> float | None:
+            if raw_grid is None or market in COUNT_LINES:
+                return None
+            rgh, rga = np.indices(raw_grid.shape)
+            return float(raw_grid[goal_test(market, sel, line)(rgh, rga)].sum())
 
         def add(
             market: str,
@@ -185,6 +196,7 @@ class LegFactory:
             p: float,
             track: str,
             track_p: float | None = None,
+            p_raw: float | None = None,
         ) -> None:
             conf, skill = self.trust(track, p if track_p is None else track_p)
             legs.append(
@@ -197,6 +209,7 @@ class LegFactory:
                     p=float(p),
                     confidence=conf,
                     skill=skill,
+                    p_raw=p_raw if p_raw is not None else raw_of(market, sel, line),
                 )
             )
 
@@ -231,6 +244,7 @@ class LegFactory:
                         p=float(m[i, j]),
                         confidence="Low",
                         skill=False,
+                        p_raw=None if raw_grid is None else float(raw_grid[i, j]),
                     )
                 )
         for stat, lines in self.count_lines.items():
@@ -239,8 +253,11 @@ class LegFactory:
                 if col not in f.index or pd.isna(f[col]):
                     continue
                 p = float(f[col])
-                add(stat, "over", line, f"Over {line:g} {stat}", p, f"{stat}_{line}")
-                add(stat, "under", line, f"Under {line:g} {stat}", 1 - p, f"{stat}_{line}")
+                rc = f"raw_{col}"
+                r = float(f[rc]) if rc in f.index and pd.notna(f[rc]) else None
+                add(stat, "over", line, f"Over {line:g} {stat}", p, f"{stat}_{line}", p_raw=r)
+                add(stat, "under", line, f"Under {line:g} {stat}", 1 - p, f"{stat}_{line}",
+                    p_raw=None if r is None else 1 - r)  # fmt: skip
         return legs
 
 

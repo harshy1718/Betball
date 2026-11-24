@@ -290,3 +290,55 @@ def test_covariates_need_their_columns(history):
         model.fit(history)
     with pytest.raises(ValueError, match="unknown"):
         DixonColesParams.from_dict({"covariates": ["weather"]})
+
+
+def test_gradient_correct_with_dynamic_ratings(history, monkeypatch):
+    captured = {}
+    real_minimize = dc_module.minimize
+
+    def spy(fun, x0, **kwargs):
+        captured["fun"], captured["x0"] = fun, x0
+        return real_minimize(fun, x0, **kwargs)
+
+    monkeypatch.setattr(dc_module, "minimize", spy)
+    DixonColes(DixonColesParams(dynamic_weeks=8, rw=5.0, xi=0.0)).fit(history)
+    fun = captured["fun"]
+    theta = captured["x0"] + np.random.default_rng(3).normal(0, 0.1, len(captured["x0"]))
+    theta[3] = 0.05
+    _, grad = fun(theta)
+    num = np.array(
+        [(fun(theta + 1e-6 * e)[0] - fun(theta - 1e-6 * e)[0]) / 2e-6 for e in np.eye(len(theta))]
+    )
+    np.testing.assert_allclose(grad, num, atol=1e-4)
+
+
+def test_dynamic_ratings_follow_a_team_that_changes(history):
+    """C is average for a season and a half, then becomes as strong as A: the dynamic model's
+    latest rating for C must move further towards A's than a model with one rating per team."""
+    rng = np.random.default_rng(5)
+    rows = []
+    day = pd.Timestamp("2015-08-01")
+    for season in (2015, 2016):
+        for rnd in range(40):
+            d = day + pd.Timedelta(days=7 * rnd + 365 * (season - 2015))
+            late = season == 2016 and rnd >= 20
+            strength = {"A": 1.0, "B": 0.0, "C": 1.0 if late else 0.0, "D": -0.5}
+            for h in "ABCD":
+                for a in "ABCD":
+                    if h == a:
+                        continue
+                    lh = np.exp(0.3 + strength[h] - strength[a] / 2)
+                    la = np.exp(0.1 + strength[a] - strength[h] / 2)
+                    rows.append(("E0", season, d, h, a, rng.poisson(lh), rng.poisson(la)))
+    df = pd.DataFrame(rows, columns=["league", "season", "date", "home", "away", "FTHG", "FTAG"])
+    df["FTR"] = np.select([df.FTHG > df.FTAG, df.FTHG < df.FTAG], ["H", "A"], "D")
+    static = DixonColes(DixonColesParams(xi=0.0))
+    dynamic = DixonColes(DixonColesParams(xi=0.0, dynamic_weeks=4, rw=10.0))
+    static.fit(df)
+    dynamic.fit(df)
+    gap = {}
+    for name, m in (("static", static), ("dynamic", dynamic)):
+        a = m.attack[m._team_idx[("E0", "A")]]
+        c = m.attack[m._team_idx[("E0", "C")]]
+        gap[name] = a - c
+    assert gap["dynamic"] < gap["static"] - 0.1

@@ -165,6 +165,7 @@ class Desk:
             ms.settled_profit,
             ms.pending_stake,
             price,
+            self.exposure(),
         )
         c["desk_view"] = desk_view(c)
         return c
@@ -318,6 +319,10 @@ class Desk:
         return out
 
     # -- the saved-slip book ---------------------------------------------------------------
+    def exposure(self) -> dict[str, float]:
+        """Stake riding on each match in saved slips not yet settled (match id -> amount)."""
+        return open_exposure(self._read())
+
     def _read(self) -> pd.DataFrame:
         if not self.path.exists():
             return pd.DataFrame(columns=SLIP_COLS)
@@ -384,6 +389,19 @@ class Desk:
             )
         rows = log.where(log.notna(), None).to_dict("records")
         return {"slips": rows[::-1], "record": record}
+
+
+def open_exposure(log: pd.DataFrame) -> dict[str, float]:
+    """Per match id, the stakes of open (unsettled) saved slips that include it."""
+    out: dict[str, float] = {}
+    if log.empty:
+        return out
+    for r in log[log["result"].isna()].to_dict("records"):
+        stake = pd.to_numeric(pd.Series([r.get("stake")]), errors="coerce").fillna(0).iloc[0]
+        mids = {str(x["key"]).split("|", 1)[0] for x in json.loads(str(r["legs"]))}
+        for m in mids:
+            out[m] = out.get(m, 0.0) + float(stake)
+    return out
 
 
 def settle(log: pd.DataFrame, matches: pd.DataFrame) -> pd.DataFrame:

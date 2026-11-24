@@ -117,7 +117,6 @@ export default function Match() {
         <Stat label="Expected goals" value={`${m.exp_goals.home.toFixed(2)} – ${m.exp_goals.away.toFixed(2)}`} note={`${m.home} – ${m.away}`} />
         <Stat label="Over 2.5 goals" value={pct(m.over25)} note={`Goals call: ${m.goals_call.text}, confidence ${m.goals_call.confidence}`} />
         <Stat label="Both teams score" value={pct(m.btts)} note="chance both teams score" />
-        <Stat label="Corners" value={n1(m.corners.expected)} note={`expected · over 9.5: ${p0(m.corners.over_9_5)}`} />
         <Stat label="Cards" value={n1(m.cards.expected)} note={`expected · over 3.5: ${p0(m.cards.over_3_5)}`} />
       </div>
       <div className="two-col">

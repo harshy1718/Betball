@@ -38,9 +38,9 @@ only filters the view; the slips are the same ones the full board shows.
      same question. "Best" cannot mean "most likely" (each extra leg lowers the chance) and,
      without the site's prices, it cannot mean best value. The floors are in `trader.parlays`.
 4. **Bet types**, all from our model: result, double chance, total goals (0.5 to 4.5), team
-   goals (0.5, 1.5, 2.5), both teams score, handicap (1.5 and 2.5), win to nil, cards and corners
-   (the site's lines: cards 3.5, 4.5, 5.5; corners 8.5, 9.5, 10.5; `trader.count_lines`), odd/even
-   and correct score. Corners and odd/even have no model skill, so the board leaves them out.
+   goals (0.5, 1.5, 2.5), both teams score, handicap (1.5 and 2.5), win to nil, cards (the site's
+   lines 3.5, 4.5, 5.5; `trader.count_lines`), odd/even and correct score. Odd/even has no model
+   skill, so the board leaves it out. Corners are no longer forecast at all (ADR 0020).
    **A correct score is a single bet only**, never in a parlay.
 5. **Every slip shows** its chance, our fair odds, a risk grade, the desk's call, what each leg
    costs ("without X the slip comes in 52%"), and a stake.
@@ -55,14 +55,21 @@ only filters the view; the slips are the same ones the full board shows.
 
 | Number | How |
 |---|---|
-| Leg chance | our model only (`staking.confidence: model`) |
+| Leg chance | our model only (`staking.confidence: model`), calibrated (ADR 0020): goals through one calibrated score grid, so singles and parlays agree; cards through a calibrated mean and spread |
 | Confidence | the leg's own track record at that chance (`reports/confidence/track_record.csv`; the extra goal bets in `track_record_goals.csv`, rebuilt by `football-edge build-confidence`) |
 | Weak leg | no model skill on that kind of bet (corners and odd/even always), or Low confidence |
 | Same-match goal legs | read exactly from the model's score grid (result, goals, team goals, handicap, win to nil, odd/even and correct score are all about the score) |
 | Corners / cards with other legs | each stat becomes a range; how it moves with the goal legs is measured on real matches since 2020 (capped between 0.5x and 1.5x) |
 | Different matches | chances multiply |
 | Risk grade | slip chance 60%+ Low, 40-60% Medium, 20-40% High, under 20% Very high; one step up if any leg is weak |
-| Stake | `trader.stake_by_risk` share of `staking.monthly_budget`, rounded; 0 once the month's stop-loss is hit |
+| Stake | `trader.stake_by_risk` share of `staking.monthly_budget`, rounded; 0 once the month's stop-loss is hit; cut so that open saved slips on any one match never exceed `staking.max_match_fraction` (4%) of the budget (a parlay's whole stake counts against every match in it) |
+
+## Does it work? The replay
+
+`football-edge replay-desk` replays the desk's own code on every match of 2020/21-2025/26 with
+nothing from the future (calibrated chances, labels from earlier seasons only, lifts from
+earlier matches only) and grades every slip. Results in `reports/replay/` and ADR 0020: singles
+75.4% predicted, 75.8% landed; safe parlays 60.8% and 62.3%; risky parlays 33.2% and 33.4%.
 
 ## Honest limits
 
