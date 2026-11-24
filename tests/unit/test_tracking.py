@@ -259,6 +259,7 @@ def test_recap_counts_hits_and_misses(tcfg):
 
 
 def test_tracking_routes_are_local_only(tcfg, tmp_path):
+    pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
 
     from football_edge.web.app import create_app

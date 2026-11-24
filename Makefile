@@ -1,6 +1,6 @@
 .PHONY: install lint format typecheck test check ingest
 install:
-	python -m pip install -e ".[dev]"
+	python -m pip install -e ".[dev,web]"
 lint:
 	ruff check src tests
 format:
