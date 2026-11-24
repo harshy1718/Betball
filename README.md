@@ -24,6 +24,7 @@ On Linux/macOS the same steps are `make install`, `make ingest`, `make check`.
 | `docs/` | architecture, data dictionary, specs, decision records (`adr/`) |
 | `reports/` | generated evaluation output, one folder per phase |
 | `web/` | the Nox website (React); run it with `football-edge serve`, see `docs/website.md` |
+| `records/` | the live prediction log: every prediction before kickoff, hash-chained; commit it daily (`docs/tracking.md`) |
 | `scripts/` | one-off exploratory scripts (not imported by the package) |
 
 ## Engineering rules
@@ -35,3 +36,6 @@ On Linux/macOS the same steps are `make install`, `make ingest`, `make check`.
 
 ## The Nox website
 Predictions as a website with Nox the owl: `pip install -e ".[web]"`, build once with `cd web; npm install; npm run build`, then `football-edge serve` and open http://127.0.0.1:8000. Details in `docs/website.md`.
+
+## Live tracking
+Every prediction is logged before kickoff and graded after the match: `football-edge daily` (set it up once with `football-edge schedule-daily --time 10:30`), the private Scorecard and Posts pages, and `football-edge records-verify`. Details in `docs/tracking.md`.

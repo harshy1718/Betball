@@ -31,3 +31,5 @@ reports/simulation/grid_predictions_*.parquet
 reports/simulation/bets_*.csv
 # downloaded upcoming fixtures and odds (refreshed by `football-edge update`)
 data/upcoming/
+# Ask Nox chat log (personal, never committed)
+reports/analyst/web_chat_log.jsonl

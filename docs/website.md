@@ -99,11 +99,19 @@ cd web; npm run dev              # terminal 2: open http://localhost:5173
 | `GET /api/golden` | matches with golden calls, the bars, the tracker (counts only) |
 | `GET /api/ask/status` | is Ollama up with the analyst model |
 | `POST /api/ask` | `{"session", "question"}`; streams `tool` events, then `answer` or `error` |
+| `GET /api/desk/...` | the private trader desk (docs/trader.md); this PC only |
+| `GET /api/desk/scorecard` | live accuracy of every logged prediction (docs/tracking.md); this PC only |
+| `GET /api/posts`, `POST /api/posts/mark`, `GET /api/posts/recap` | Instagram strong calls, posted log, weekly recap; this PC only |
 
 Interactive docs: http://127.0.0.1:8000/api/docs while `serve` is running.
+
+## Private pages
+
+Desk, Scorecard and Posts (tabs under the 🔒 Desk pill) answer only on this PC. The fonts are
+bundled with the site (no Google Fonts call), which also lets the Posts page export images.
+After pulling new web code, run `npm install` once in `web/`, then `npm run build`.
 
 ## Not built yet
 
 - Hosting it on the internet (it runs on this PC only).
-- Downloading a match as the Instagram card.
 - Before publishing: check the name "Nox" and a domain; other products use the name.

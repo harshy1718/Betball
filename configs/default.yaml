@@ -187,3 +187,14 @@ analyst:                    # match-analyst chat (docs/analyst.md): local LLM + 
   num_predict: 500
   timeout_s: 600
   max_steps: 4              # tool rounds per question
+
+tracking:                   # live prediction log and scorecard (docs/tracking.md, ADR 0019)
+  predictions_dir: records/predictions  # committed to git: the public, timestamped proof
+  posted_dir: records/posted            # committed: the calls posted on Instagram
+  slips_dir: bets/desk_log              # private (bets/ is never committed): the desk's slips
+  baseline_years: 3         # plain baseline = the league's own rate over the previous 3 years
+  min_sample: 30            # below this many graded predictions a figure is "too few to judge"
+  strong:                   # a strong call (posts page), from the 2020-26 track record only:
+    min_hit: 0.65           # every past chance level from the call's up came true 65%+ ...
+    min_band_n: 30          # ... (levels with 30+ past calls count) ...
+    min_class_n: 100        # ... and 100+ past calls in total. Today: favourites at 60%+

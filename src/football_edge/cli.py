@@ -985,7 +985,116 @@ def _serve(args: argparse.Namespace) -> None:
     st = nox.status()
     print(f"Ask Nox: {'ready with ' + st['model'] if st['ready'] else st['problem']}")
     print(f"Open http://{args.host}:{args.port}  (Ctrl+C to stop)", flush=True)
-    uvicorn.run(create_app(cfg, svc, nox=nox), host=args.host, port=args.port, log_level="warning")
+    app = create_app(cfg, svc, nox=nox, track=True)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+
+
+def _snapshot_now(cfg: Any, days: int = 7) -> dict[str, int]:
+    from football_edge.tracking.snapshot import take_snapshot
+    from football_edge.trader.desk import Desk
+    from football_edge.web.service import NoxService
+
+    svc = NoxService(cfg, days=days)
+    return take_snapshot(cfg, Desk(cfg, svc))
+
+
+def _print_scorecard(cfg: Any) -> None:
+    from football_edge.tracking import scorecard
+
+    card = scorecard.build(cfg, load_matches(cfg))
+    print(f"logged since {card['since'] or '-'}: {card['logged_matches']} matches, "
+          f"{card['graded_matches']} graded")  # fmt: skip
+    for m in card["markets"]:
+        hit = f"{m['hit']:.0%}" if m["hit"] is not None else "-"
+        print(f"  {m['name']:<26} {m['n']:>5} graded, came in {hit:>4}; {m['verdict']}")
+    for s in card["slips"]:
+        print(f"  {s['title']:<26} {s['won']}/{s['n']} came in (expected {s['expected']:.0%})")
+    if not card["log_ok"]:
+        print("WARNING: the prediction log was changed after it was written:")
+        for p in card["log_problems"]:
+            print(f"  {p['file']} {p['taken_at']}: {p['what']}")
+
+
+def _daily(args: argparse.Namespace) -> None:
+    """The morning run: fresh results and schedule, log every prediction before kickoff,
+    grade what has been played, settle the golden-call logs."""
+    cfg = load_config(args.config)
+    if not args.no_update:
+        try:
+            _update(args)
+        except (Exception, SystemExit) as e:  # keep going: logging still works on old data
+            print(f"update failed, carrying on with the data we have: {e}")
+    n = _snapshot_now(cfg)
+    print(f"logged {n['predictions']} prediction rows and {n['slips']} desk slip rows")
+    try:
+        _settle(args)
+    except (Exception, SystemExit) as e:
+        print(f"settle skipped: {e}")
+    _print_scorecard(cfg)
+    print("To make today's log public proof: commit and push records/ (see docs/tracking.md).")
+
+
+def _scorecard(args: argparse.Namespace) -> None:
+    _print_scorecard(load_config(args.config))
+
+
+def _records_verify(args: argparse.Namespace) -> None:
+    from football_edge.tracking.snapshot import ledgers
+
+    cfg = load_config(args.config)
+    bad = 0
+    for name, book in ledgers(cfg).items():
+        problems = book.verify()
+        bad += len(problems)
+        rows = len(book.read())
+        print(f"{name}: {rows} rows, {'untouched' if not problems else 'CHANGED'}")
+        for p in problems:
+            print(f"  {p.file} {p.taken_at}: {p.what}")
+    if bad:
+        raise SystemExit(1)
+
+
+def _schedule_daily(args: argparse.Namespace) -> None:
+    """Register `football-edge daily` in Windows Task Scheduler: runs hidden (no window to
+    close by accident) when the PC is on; a missed run starts as soon as the PC is back on.
+    Running it again replaces the task."""
+    import platform
+    import re
+    import subprocess
+    import sys
+
+    cfg = load_config(args.config)
+    if not re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", args.time):
+        raise SystemExit("--time must look like 10:30")
+    folder = cfg.root / "data" / "interim" / "daily"
+    folder.mkdir(parents=True, exist_ok=True)
+    runner = folder / "nox_daily.cmd"
+    runner.write_text(
+        "@echo off\r\n"
+        f'cd /d "{cfg.root}"\r\n'
+        f'echo ===== %date% %time% >> "{folder / "daily.log"}"\r\n'
+        f'"{sys.executable}" -m football_edge.cli daily >> "{folder / "daily.log"}" 2>&1\r\n',
+        encoding="utf-8",
+    )
+    print(f"runner written: {runner}")
+    if platform.system() != "Windows":
+        print("not on Windows: schedule that file with cron instead")
+        return
+    ps = (
+        # conhost --headless: no console window, so the run cannot be closed by accident
+        f"$a = New-ScheduledTaskAction -Execute 'conhost.exe' "
+        f"-Argument '--headless cmd.exe /c \"{runner}\"';"
+        f"$t = New-ScheduledTaskTrigger -Daily -At {args.time};"
+        "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries "
+        "-AllowStartIfOnBatteries;"
+        "Register-ScheduledTask -TaskName 'Nox daily refresh' -Action $a -Trigger $t "
+        "-Settings $s -Force | Out-Null"
+    )
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True)
+    if r.returncode:
+        raise SystemExit(f"could not register the task: {r.stderr.strip()}")
+    print(f"scheduled: 'Nox daily refresh' every day at {args.time}, hidden; "
+          f"log: {folder / 'daily.log'}")  # fmt: skip
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1127,6 +1236,21 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("settle", help="mark logged bets won/lost from results, show the record")
     p.set_defaults(func=_settle)
+
+    p = sub.add_parser("daily", help="morning run: update, log predictions, grade, scorecard")
+    p.add_argument("--src", type=Path, default=Path("raw data"), help="raw source folder")
+    p.add_argument("--no-update", action="store_true", help="skip the download step")
+    p.set_defaults(func=_daily)
+
+    p = sub.add_parser("schedule-daily", help="run `daily` every morning (Windows Task Scheduler)")
+    p.add_argument("--time", default="10:30", help="local time, e.g. 10:30")
+    p.set_defaults(func=_schedule_daily)
+
+    p = sub.add_parser("scorecard", help="live accuracy of every logged prediction")
+    p.set_defaults(func=_scorecard)
+
+    p = sub.add_parser("records-verify", help="check the prediction log was never edited")
+    p.set_defaults(func=_records_verify)
 
     args = parser.parse_args(argv)
     configure_logging()

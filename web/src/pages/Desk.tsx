@@ -3,7 +3,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Nox from "../components/Nox";
-import { Loading, Page, Problem } from "../components/ui";
+import { Loading, Page, PrivateTabs, Problem } from "../components/ui";
+import { handicapTable } from "../format";
 import { desk, pct, useApi, type Board, type DeskLeg, type Mood, type Review, type Slip } from "../api";
 
 const riskClass = (r: string) => `risk risk-${r.toLowerCase().replace(" ", "-")}`;
@@ -59,6 +60,7 @@ function SlipCard({ slip, bare = false }: { slip: Slip; bare?: boolean }) {
           <li key={l.key} className={l.weak ? "weak" : ""}>
             <div className="stack-4">
               <b>{l.label}</b>
+              {handicapTable(l) && <span className="hcp-table small">On a 3-way handicap table: {handicapTable(l)}</span>}
               <span className="muted small">
                 {l.home} v {l.away}
                 {l.market === "cards" && " · sites count cards differently"}
@@ -166,6 +168,7 @@ function SingleRow({ s, showMatch = false, why = false }: { s: Slip; showMatch?:
         <span className="single-label">
           {golden && <span className="t-gold" aria-label="Golden call">★ </span>}
           <b>{l.label}</b>
+          {handicapTable(l) && <span className="hcp-table small"> · table {handicapTable(l)}</span>}
           {showMatch && (
             <span className="muted small">
               {" "}
@@ -449,12 +452,12 @@ export default function Desk() {
   const pick = (id: string) => setParams(id ? { match: id } : {}, { replace: true });
   return (
     <Page>
+      <PrivateTabs />
       <section className="hero desk-hero" aria-label="Trader desk">
         <div className="hero-nox">
           <Nox size={170} animate />
         </div>
         <div className="hero-copy stack-10">
-          <span className="private">🔒 Private · only answers on this PC</span>
           <h1 className="h1">Trader desk</h1>
           <p className="muted">
             Nox generates everything here from the model: the good singles in every match and two parlays per match. The safe

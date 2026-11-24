@@ -184,6 +184,74 @@ export const desk = {
   history: () => get<DeskHistory>("/api/desk/history"),
 };
 
+// -- live tracking: scorecard and Instagram posts (private) ---------------------------------
+export interface ScoreRow {
+  family: string;
+  name: string;
+  n: number;
+  matches: number;
+  avg_p: number | null;
+  hit: number | null;
+  brier: number | null;
+  base_brier: number | null;
+  skill: number | null;
+  market_n: number;
+  market_brier: number | null;
+  model_brier_same: number | null;
+  verdict: string;
+}
+
+export interface Scorecard {
+  since: string | null;
+  logged_matches: number;
+  graded_matches: number;
+  min_sample: number;
+  overall: ScoreRow | null;
+  markets: ScoreRow[];
+  calibration: { band: string; lo: number; hi: number; n: number; avg_p: number | null; hit: number | null }[];
+  confidence: { label: string; n: number; avg_p: number | null; hit: number | null; gap: number | null }[];
+  slips: { title: string; n: number; expected: number | null; hit: number | null; won: number; floor: number | null }[];
+  posted: { n: number; settled: number; won: number };
+  log_ok: boolean;
+  log_problems: { taken_at: string; file: string; what: string }[];
+}
+
+export interface PostCall {
+  kind: "result" | "goals";
+  call: string;
+  p: number;
+  confidence: string;
+  posted: boolean;
+}
+
+export interface PostCandidate {
+  match: MatchSummary;
+  calls: PostCall[];
+  big: boolean;
+  caption: string;
+}
+
+export interface PostsPage {
+  posts: PostCandidate[];
+  rule: { market: string; text: string }[];
+}
+
+export interface Recap {
+  from: string | null;
+  to: string | null;
+  calls: { match: string; call: string; p: number; score: string | null; won: boolean | null; day: string }[];
+  settled: number;
+  won: number;
+  pending: number;
+}
+
+export const tracking = {
+  scorecard: () => get<Scorecard>("/api/desk/scorecard"),
+  posts: () => get<PostsPage>("/api/posts"),
+  mark: (match_id: string, kind: string) => post<{ already: boolean }>("/api/posts/mark", { match_id, kind }),
+  recap: (days = 7) => get<Recap>(`/api/posts/recap?days=${days}`),
+};
+
 export const pct = (p: number) => `${Math.round(p * 100)}%`;
 
 async function get<T>(path: string): Promise<T> {

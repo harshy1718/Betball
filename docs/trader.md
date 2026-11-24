@@ -8,6 +8,13 @@ nowhere else, and it is never part of the public site. Settings: `trader:` in
 
 Nothing is hand-picked: Nox generates the whole board from the model.
 
+**Handicaps on a three-way table.** Sites often show handicaps as "2:0 / Getafe" (Getafe starts
+two goals up). Every handicap leg shows its table entry: Getafe +1.5 = 2:0 · Getafe, Getafe -1.5 =
+0:1 · Getafe, Atletico +1.5 = 0:2 · Atletico, Atletico -1.5 = 1:0 · Atletico.
+
+**Scorecard and posts.** The desk's slips are logged and graded automatically (docs/tracking.md);
+the Scorecard tab shows how each slip type did against its promise.
+
 **Pick a match.** The "Show" box under the header switches between all matches (the full board
 below) and one match: then only that match's singles and two parlays are shown. The choice is
 kept in the address (`/desk?match=<id>`), so a refresh or a bookmark keeps it. Picking a match

@@ -121,6 +121,11 @@ class Desk:
             self._cache = (sl.key, state)
             return state
 
+    def legs_by_match(self) -> tuple[list[dict[str, Any]], dict[str, list[Leg]]]:
+        """(match summaries, every leg of every match in the slate) for the prediction log."""
+        st = self._state()
+        return st["matches"], st["legs"]
+
     def _count_lines(self) -> dict[str, tuple[float, ...]]:
         conf = self.conf.get("count_lines") or {}
         return {s: tuple(float(x) for x in conf.get(s, COUNT_LINES[s])) for s in COUNT_LINES}

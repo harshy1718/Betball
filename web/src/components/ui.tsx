@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { NavLink, Link } from "react-router-dom";
+import { NavLink, Link, useLocation } from "react-router-dom";
 import Nox from "./Nox";
 import { pct, type Golden, type MatchSummary } from "../api";
 
@@ -22,7 +22,11 @@ function ChatIcon() {
   );
 }
 
+const PRIVATE = ["/desk", "/scorecard", "/posts"];
+
 export function Header() {
+  const { pathname } = useLocation();
+  const inPrivate = PRIVATE.some((p) => pathname.startsWith(p));
   return (
     <header className="header">
       <Link to="/" className="brand" aria-label="nox home">
@@ -49,12 +53,32 @@ export function Header() {
           <ChatIcon />
           Ask Nox
         </NavLink>
-        <NavLink to="/desk" className="pill pill-desk" title="Private: only on this PC">
+        <NavLink to="/desk" className={`pill pill-desk${inPrivate ? " active" : ""}`} title="Private: only on this PC">
           <span aria-hidden="true">🔒</span>
           Desk
         </NavLink>
       </nav>
     </header>
+  );
+}
+
+/** Tabs across the private pages (desk, scorecard, posts): only answer on this PC. */
+export function PrivateTabs() {
+  return (
+    <nav aria-label="Private pages" className="private-tabs">
+      <span className="private">🔒 Private · only answers on this PC</span>
+      <div className="row-8">
+        <NavLink to="/desk" className="chip chip-tab">
+          Trader desk
+        </NavLink>
+        <NavLink to="/scorecard" className="chip chip-tab">
+          Scorecard
+        </NavLink>
+        <NavLink to="/posts" className="chip chip-tab">
+          Posts
+        </NavLink>
+      </div>
+    </nav>
   );
 }
 

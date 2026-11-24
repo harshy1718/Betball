@@ -9,13 +9,17 @@ Run with `football-edge serve`. Routes:
   GET /api/ask/status        is the local LLM ready for Ask Nox
   POST /api/ask              Ask Nox a question; streams JSON lines: progress, then the answer
   /api/desk/...              the private trader desk: answers requests from this PC only
+  /api/desk/scorecard        live accuracy of every logged prediction (private)
+  /api/posts, /api/posts/... strong calls for Instagram, mark as posted, weekly recap (private)
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import queue
 import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -38,6 +42,11 @@ class SlipRequest(BaseModel):
     stake: float | None = None
 
 
+class PostRequest(BaseModel):
+    match_id: str
+    kind: str
+
+
 class Question(BaseModel):
     session: str = "default"
     question: str
@@ -49,7 +58,10 @@ def create_app(
     dist: Path | None = None,
     nox: AskNox | None = None,
     desk: Any = None,
+    track: bool = False,
 ) -> FastAPI:
+    """`track`: log every prediction and desk slip whenever the desk board is opened
+    (at most every 10 minutes), on top of the daily run. On for `football-edge serve`."""
     svc = service or NoxService(cfg)
     asker = nox or AskNox(cfg)
     trader = desk
@@ -144,9 +156,64 @@ def create_app(
 
     local = [Depends(local_only)]
 
+    last_snapshot = [0.0]
+    card_cache: dict[str, Any] = {}
+
+    def snapshot() -> None:
+        if not track or time.monotonic() - last_snapshot[0] < 600:
+            return
+        last_snapshot[0] = time.monotonic()
+        try:
+            from football_edge.tracking.snapshot import take_snapshot
+
+            take_snapshot(cfg, get_desk())
+        except Exception:  # logging must never break the page
+            logging.getLogger(__name__).exception("prediction snapshot failed")
+
     @app.get("/api/desk/board", dependencies=local)
     def desk_board() -> dict[str, Any]:
-        return dict(desk_guard(get_desk().board))
+        out = dict(desk_guard(get_desk().board))
+        snapshot()
+        return out
+
+    @app.get("/api/desk/scorecard", dependencies=local)
+    def desk_scorecard() -> dict[str, Any]:
+        from football_edge.tracking import scorecard
+        from football_edge.tracking.snapshot import ledgers
+
+        history = desk_guard(svc.history)
+        stamp = [svc.matches_path.stat().st_mtime if svc.matches_path.exists() else 0.0]
+        for book in ledgers(cfg).values():
+            stamp += [p.stat().st_mtime for p in book.files()]
+        key = repr(stamp)
+        if card_cache.get("key") != key:
+            card_cache.update(key=key, value=scorecard.build(cfg, history))
+        return dict(card_cache["value"])
+
+    @app.get("/api/posts", dependencies=local)
+    def posts_list() -> dict[str, Any]:
+        from football_edge.tracking import posts
+
+        return {"posts": desk_guard(posts.candidates, cfg, get_desk()),
+                "rule": desk_guard(posts.rule_text, cfg, get_desk())}  # fmt: skip
+
+    @app.post("/api/posts/mark", dependencies=local)
+    def posts_mark(r: PostRequest) -> dict[str, Any]:
+        from football_edge.tracking import posts
+
+        try:
+            out = posts.mark_posted(cfg, get_desk(), r.match_id, r.kind)
+        except posts.NotPostableError as e:
+            raise HTTPException(400, str(e)) from None
+        snapshot()
+        return dict(out)
+
+    @app.get("/api/posts/recap", dependencies=local)
+    def posts_recap(days: int = 7) -> dict[str, Any]:
+        from football_edge.tracking import posts
+
+        history = desk_guard(svc.history)
+        return dict(posts.recap(cfg, history, days=max(1, min(days, 31))))
 
     @app.get("/api/desk/options/{mid}", dependencies=local)
     def desk_options(mid: str) -> dict[str, Any]:
