@@ -201,10 +201,31 @@ export interface ScoreRow {
   verdict: string;
 }
 
+export interface GradedCall {
+  call: string;
+  p: number;
+  won: boolean;
+}
+
+export interface RecentMatch {
+  id: string;
+  kickoff_utc: string;
+  league: string;
+  home: string;
+  away: string;
+  score: string;
+  result?: GradedCall;
+  goals?: GradedCall;
+}
+
 export interface Scorecard {
   since: string | null;
   logged_matches: number;
   graded_matches: number;
+  upcoming_matches: number;
+  awaiting_results: number;
+  next_kickoff: string | null;
+  recent: RecentMatch[];
   min_sample: number;
   overall: ScoreRow | null;
   markets: ScoreRow[];

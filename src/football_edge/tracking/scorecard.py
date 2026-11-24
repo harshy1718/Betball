@@ -290,7 +290,35 @@ def graded_posts(posted: pd.DataFrame, results: Results) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def build(cfg: Config, matches: pd.DataFrame) -> dict[str, Any]:
+def recent_matches(graded: pd.DataFrame, n: int = 10) -> list[dict[str, Any]]:
+    """The latest graded matches with Nox's main calls: the most likely result and the
+    over/under 2.5 side, each with the chance given and whether it came in."""
+    if graded.empty:
+        return []
+    out = []
+    for mid, g in graded.groupby("match_id"):
+        g = g.assign(pf=g["p"].astype(float))
+        r0 = g.iloc[0]
+        row: dict[str, Any] = {"id": str(mid), "kickoff_utc": str(r0["kickoff_utc"]),
+                               "league": str(r0["league"]), "home": str(r0["home_key"]),
+                               "away": str(r0["away_key"]), "score": str(r0["score"])}  # fmt: skip
+        res = g[g["market"] == "1x2"]
+        if len(res):
+            x = res.sort_values("pf").iloc[-1]
+            name = {"home": f"{r0['home_key']} win", "away": f"{r0['away_key']} win"}
+            row["result"] = {"call": name.get(str(x["sel"]), "Draw"), "p": float(x["pf"]),
+                             "won": bool(x["won"])}  # fmt: skip
+        ou = g[g["market"] == "ou25"]
+        if len(ou):
+            x = ou.sort_values("pf").iloc[-1]
+            row["goals"] = {"call": f"{str(x['sel']).capitalize()} 2.5 goals",
+                            "p": float(x["pf"]), "won": bool(x["won"])}  # fmt: skip
+        out.append(row)
+    return sorted(out, key=lambda r: r["kickoff_utc"], reverse=True)[:n]
+
+
+def build(cfg: Config, matches: pd.DataFrame, now: pd.Timestamp | None = None) -> dict[str, Any]:
+    now = now or pd.Timestamp.now(tz="UTC")
     t = cfg.tracking
     books = ledgers(cfg)
     preds = books["predictions"].read()
@@ -304,11 +332,17 @@ def build(cfg: Config, matches: pd.DataFrame) -> dict[str, Any]:
     posts = graded_posts(books["posted"].read(), results)
     done = posts[posts["won"].notna()] if len(posts) else posts
     problems = [p.__dict__ for name in ("predictions", "posted") for p in books[name].verify()]
+    open_ = latest[~latest["match_id"].isin(set(graded["match_id"]))] if len(latest) else latest
+    ko = _utc(open_.drop_duplicates("match_id")["kickoff_utc"]) if len(open_) else pd.Series([])
     return {
         "since": str(preds["taken_at"].min())[:10] if len(preds) else None,
         "logged_matches": int(latest["match_id"].nunique()) if len(latest) else 0,
         "graded_matches": int(graded["match_id"].nunique()) if len(graded) else 0,
+        "upcoming_matches": int((ko > now).sum()),
+        "awaiting_results": int((ko <= now).sum()),
+        "next_kickoff": str(ko[ko > now].min()) if (ko > now).any() else None,
         "min_sample": min_n,
+        "recent": recent_matches(graded),
         **acc,
         "slips": slip_record(books["slips"].read(), preds, results),
         "posted": {

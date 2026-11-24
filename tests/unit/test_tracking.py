@@ -129,8 +129,12 @@ def test_scorecard_grades_logged_predictions(tcfg):
     book.append(pd.DataFrame(rows), "2026-11-19T09:00:00Z")
     results = played([("2026-11-20", "A", "B", 1, 0), ("2026-11-21", "C", "D", 0, 2),
                       ("2024-01-01", "X", "Y", 1, 1)])  # E v F not played yet  # fmt: skip
-    card = scorecard.build(tcfg, results)
+    card = scorecard.build(tcfg, results, now=pd.Timestamp("2026-11-25", tz="UTC"))
     assert card["logged_matches"] == 3 and card["graded_matches"] == 2
+    assert (card["awaiting_results"], card["upcoming_matches"]) == (1, 0)  # E v F played, no result
+    latest = card["recent"][0]  # newest first: C v D, 0-2
+    call = latest["result"]
+    assert (latest["score"], call["call"], call["won"]) == ("0-2", "C win", False)
     res = card["markets"][0]
     assert res["name"] == "Match result" and res["n"] == 6  # 3 outcomes x 2 played matches
     assert res["hit"] == pytest.approx(2 / 6, abs=1e-4)
