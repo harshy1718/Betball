@@ -6,6 +6,7 @@ import pytest
 from football_edge.config import load_config
 from football_edge.data.loader import ingest
 from football_edge.data.schedule import (
+    TOKEN_ENV,
     ScheduleError,
     build_name_map,
     fetch_schedule,
@@ -98,7 +99,7 @@ PAYLOAD = {
 }  # fmt: skip
 
 
-def test_fetch_schedule_and_upcoming(tmp_path):
+def test_fetch_schedule_and_upcoming(tmp_path, monkeypatch):
     aliases = tmp_path / "a.yaml"
     aliases.write_text("E0:\n  Manchester United: Man United\n")
     sched, problems = fetch_schedule(("E0",), KNOWN, aliases, get=lambda u, t: PAYLOAD,
@@ -119,5 +120,6 @@ def test_fetch_schedule_and_upcoming(tmp_path):
     )
     fx = from_schedule(nxt, priced)
     assert fx["odds_h"].iat[0] == 1.9 and pd.isna(fx["ref_h"].iat[0])
+    monkeypatch.delenv(TOKEN_ENV, raising=False)  # a real key on this machine must not count
     with pytest.raises(ScheduleError, match="token"):
         fetch_schedule(("E0",), KNOWN, aliases, get=lambda u, t: PAYLOAD, token="")
