@@ -197,6 +197,9 @@ trader:                     # private trader desk (docs/trader.md, ADR 0018): Ha
   days: 3                   # Nox builds slips from matches in the next 3 days
   leg_range: [0.55, 0.85]   # good singles: below 55% is a coin flip, above 85% pays too little
   singles_per_match: 4      # best leg per bet family, up to this many per match
+  extended_markets: true    # ADR 0028: more full-time, refund and half markets (shown, logged, graded)
+  best_only: false          # ADR 0029: true = board from best markets only (replay passed)
+  add_best: true            # ADR 0029: board = its old markets plus all 62 best markets, new ones included (replay passed 25 Nov 2026)
   parlays:                  # each = highest-paying mix of strong legs above its floor
     safe: {floor: 0.60, max_legs: 4, high_only: false}   # comes in 60%+ of the time
     risky: {floor: 0.25, max_legs: 5, high_only: true}   # 25%+, High-confidence legs only

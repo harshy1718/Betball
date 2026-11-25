@@ -568,9 +568,15 @@ def _replay_desk(args: argparse.Namespace) -> None:
     goals, counts, calibrated = _confidence_inputs(cfg)
     matches = load_matches(cfg)
     lo, hi = args.seasons
-    slips = replay(goals, counts, matches, dict(cfg.trader), _current_rho(cfg), (lo, hi),
+    conf = dict(cfg.trader)
+    if args.best_only:  # ADR 0029: the board built from best markets only
+        conf["best_only"] = True
+    if args.add_best:  # ADR 0029: the old board markets plus every best market
+        conf["add_best"], conf["best_only"] = True, False
+    slips = replay(goals, counts, matches, conf, _current_rho(cfg), (lo, hi),
                    workers=args.workers)  # fmt: skip
-    out = cfg.reports_dir / "replay"
+    sub_dir = "best_only" if args.best_only else "add_best" if args.add_best else ""
+    out = cfg.reports_dir / "replay" / sub_dir
     out.mkdir(parents=True, exist_ok=True)
     slips.to_parquet(out / "slips.parquet", index=False)
     summ, seas = summarise(slips), per_season(slips)
@@ -895,8 +901,17 @@ def _challenge(args: argparse.Namespace) -> None:
 
 
 def _build_confidence(args: argparse.Namespace) -> None:
+    import pandas as pd
+
     from football_edge.predict.confidence import build_track_record
-    from football_edge.trader.record import build_goal_record
+    from football_edge.trader.record import (
+        best_markets_summary,
+        build_goal_record,
+        build_new_record,
+        market_skill,
+        new_market_rows,
+        new_market_summary,
+    )
 
     cfg = load_config(args.config)
     if not (cfg.reports_dir / "evaluation" / "dixon_coles" / "predictions.parquet").exists():
@@ -907,7 +922,14 @@ def _build_confidence(args: argparse.Namespace) -> None:
     out.mkdir(parents=True, exist_ok=True)
     table.to_csv(out / "track_record.csv", index=False, float_format="%.4f")
     extra = build_goal_record(goals, _current_rho(cfg))  # the trader desk's extra goal bets
+    rows = new_market_rows(goals, _current_rho(cfg), load_matches(cfg))  # ADR 0028 markets
+    extra = pd.concat([extra, build_new_record(rows)], ignore_index=True)
     extra.to_csv(out / "track_record_goals.csv", index=False, float_format="%.4f")
+    (out / "new_markets.md").write_text(new_market_summary(rows), encoding="utf-8")
+    skill = market_skill(goals, counts, load_matches(cfg), _current_rho(cfg))  # ADR 0029
+    skill.to_csv(out / "market_skill.csv", index=False, float_format="%.4f")
+    (out / "best_markets.md").write_text(best_markets_summary(skill), encoding="utf-8")
+    print(f"best markets: {int(skill['best'].sum())} of {len(skill)} selections")
     print(f"extra goal bets: {extra['market'].nunique()} markets, saved alongside")
     print("labels built from " + ("CALIBRATED" if calibrated else "raw")
           + " walk-forward predictions, 2020/21-2025/26")  # fmt: skip
@@ -1639,6 +1661,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("replay-desk", help="replay the trader desk with no future data")
     p.add_argument("--seasons", type=int, nargs=2, default=[2020, 2025])
     p.add_argument("--workers", type=int, default=2)
+    p.add_argument("--best-only", action="store_true", help="best markets only (ADR 0029)")
+    p.add_argument("--add-best", action="store_true", help="old markets + best markets (0029)")
     p.set_defaults(func=_replay_desk)
 
     p = sub.add_parser("calibrate", help="pre-registered calibration test and live maps (ADR 0020)")

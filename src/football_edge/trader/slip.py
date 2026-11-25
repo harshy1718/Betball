@@ -23,12 +23,13 @@ than what is left this month, and zero once the month's stop-loss is hit.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from football_edge.trader import markets as more
 from football_edge.trader.legs import GOAL_MARKETS, Leg, goal_test
 
 GRADES = ("Low", "Medium", "High", "Very high")
@@ -77,13 +78,29 @@ def match_chance(
     grid: np.ndarray | None,
     hist: History | None,
     count_p: dict[tuple[str, float], float],
+    shares: tuple[float, float] | None = None,
 ) -> float:
-    """Joint chance of all legs of ONE match. `count_p[(stat, line)]` = model P(total > line)."""
+    """Joint chance of all legs of ONE match. `count_p[(stat, line)]` = model P(total > line).
+    `shares`: the league's half-time shares, for half legs (ADR 0028)."""
+    if any(x.market in more.VOID_MARKETS for x in legs):
+        if len(legs) > 1:
+            raise ValueError("bets with a refund (draw no bet, Asian lines) are singles only")
+        return float(legs[0].p)
     goal = [x for x in legs if x.market in GOAL_MARKETS]
     p_goal = 1.0
     if goal:
+        halves = any(x.market in more.HALF_MARKETS for x in goal)
         if grid is None:  # no grid: fall back to the product (only in tests)
             p_goal = float(np.prod([x.p for x in goal]))
+        elif halves:
+            if shares is None:
+                raise ValueError("half bets need the league's half-time shares")
+            j = more.joint(grid, shares[0], shares[1])
+            h, a, h1, a1 = np.indices(j.shape)
+            ok = np.ones(j.shape, dtype=bool)
+            for x in goal:
+                ok &= goal_test(x.market, x.sel, x.line)(h, a, h1, a1)
+            p_goal = float(j[ok].sum())
         else:
             idx = np.indices(grid.shape)
             h, a = idx[0], idx[1]
@@ -113,7 +130,8 @@ def match_chance(
         marg = float(np.prod([v.mean() for v in inside.values()]))
         cond = np.ones(len(hist.hg), dtype=bool)
         for x in goal:
-            cond &= goal_test(x.market, x.sel, x.line)(hist.hg, hist.ag)
+            if x.market not in more.HALF_MARKETS:  # the lift history has full-time scores
+                cond &= goal_test(x.market, x.sel, x.line)(hist.hg, hist.ag)
         use = cond if cond.sum() >= MIN_LIFT_N else np.ones_like(cond)
         if marg > 0 and use.sum():
             lift = float(np.clip(both[use].mean() / marg, 0.5, 1.5))
@@ -128,6 +146,7 @@ class Book:
     grids: dict[str, np.ndarray]
     counts: dict[str, dict[tuple[str, float], float]]
     hist: History | None
+    shares: dict[str, tuple[float, float]] = field(default_factory=dict)  # per match id
 
     def chance(self, legs: list[Leg]) -> float:
         by_match: dict[str, list[Leg]] = defaultdict(list)
@@ -137,7 +156,10 @@ class Book:
             float(
                 np.prod(
                     [
-                        match_chance(xs, self.grids.get(mid), self.hist, self.counts.get(mid, {}))
+                        match_chance(
+                            xs, self.grids.get(mid), self.hist, self.counts.get(mid, {}),
+                            self.shares.get(mid),
+                        )
                         for mid, xs in by_match.items()
                     ]
                 )
@@ -228,6 +250,8 @@ def check(
             "back_per_100": back,
             "verdict": "above our fair price" if price * p >= 1 else "below our fair price",
             "note": "Our model's own view. Tests found the market usually more accurate, and a "
-            "parlay pays the site's margin on every leg.",
+            "parlay pays the site's margin on every leg."
+            + (" For a bet with a refund, the chance and the return are for when it is not "
+               "refunded." if any(x.market in more.VOID_MARKETS for x in legs) else ""),
         }
     return out

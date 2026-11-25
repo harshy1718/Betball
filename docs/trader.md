@@ -15,6 +15,27 @@ two goals up). Every handicap leg shows its table entry: Getafe +1.5 = 2:0 · Ge
 **Scorecard and posts.** The desk's slips are logged and graded automatically (docs/tracking.md);
 the Scorecard tab shows how each slip type did against its promise.
 
+**Build your own slip: good bets only (ADR 0029).** Under every match, "Build your own slip"
+offers only the bets the model predicts well: on 2020-26 walk-forward matches each beat a plain
+average by 5%+ in log loss and its chances held up (within 1.5 points). That is mostly bets on who
+is stronger (result without the draw, handicaps, team goals); over/under, both score, the draw,
+exact goals, cards and correct scores are not offered there. The list is rebuilt by
+`build-confidence` (reports/confidence/best_markets.md). Nox's board uses its old markets plus
+every best market, new ones included (`trader.add_best: true`; replay passed, ADR 0029).
+
+**All markets (ADR 0028).** The desk can price every bet below,
+grouped (result, handicaps, goals, team goals, both score & combos, correct score, 1st half,
+2nd half, half-time / full-time, cards, corners), with our chance, fair odds (1 / chance) and
+confidence. Tick legs and press Check to price your own slip. Markets marked **new** (exact goals,
+goal ranges, winning margin, team exact goals, clean sheets, result & both score, result & total,
+total & both score, draw no bet, Asian whole lines, all half markets) are logged and graded every
+day but are not used by Nox's own slips until a replay with them holds up. **Refund** bets (draw no
+bet, Asian whole lines) are singles only; their chance is for when the bet is not refunded, and
+a refunded saved slip settles as "void" with no profit or loss. Half markets come from the half
+model: each side's first-half goals are a share of its full-time goals (the league's own share,
+about 44%), so full-time chances do not change. It under-rates comebacks a little. Quarter
+Asian lines (e.g. -1.75) are half on each neighbouring line and are not listed.
+
 **Pick a match.** The "Show" box under the header switches between all matches (the full board
 below) and one match: then only that match's singles and two parlays are shown. The choice is
 kept in the address (`/desk?match=<id>`), so a refresh or a bookmark keeps it. Picking a match

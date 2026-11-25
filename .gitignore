@@ -37,3 +37,4 @@ reports/analyst/web_chat_log.jsonl
 reports/**/predictions_*.parquet
 reports/replay/slips.parquet
 reports/referee_cards/losses.parquet
+reports/replay/**/slips.parquet

@@ -26,6 +26,7 @@ from football_edge.config import Config
 from football_edge.leagues import NAMES as LEAGUE_NAMES
 from football_edge.tracking.results import COUNT_MARKETS, Results, leg_won, parse_line
 from football_edge.tracking.snapshot import ledgers
+from football_edge.trader import markets as more
 from football_edge.trader.legs import count_test, goal_test
 
 NAMES = {
@@ -33,9 +34,12 @@ NAMES = {
     "goals": "Total goals (other lines)", "home_goals": "Team goals", "away_goals": "Team goals",
     "hcp": "Handicap", "wtn": "Win to nil", "oddeven": "Odd/even goals",
     "score": "Correct score", "cards": "Cards", "corners": "Corners",
+    "more_ft": "More full-time markets", "refund": "Draw no bet / Asian lines",
+    "halves": "Half-time markets",
 }  # fmt: skip
 ORDER = ["1x2", "ou25", "btts", "goals", "team_goals", "hcp", "wtn", "cards", "corners",
-         "oddeven", "score"]  # fmt: skip
+         "oddeven", "score", "more_ft", "refund", "halves"]  # fmt: skip
+_NEW_ONLY = set(more.NEW_MARKETS) - {"goals", "home_goals", "away_goals"}
 BANDS = [(i / 10, (i + 1) / 10) for i in range(10)]
 SLIP_ORDER = ["Safest single", "Single", "Golden single", "Safe parlay", "Risky parlay",
               "Safe parlay across matches", "Risky parlay across matches"]  # fmt: skip
@@ -44,11 +48,21 @@ FLOORS = {"Safe parlay": 0.60, "Risky parlay": 0.25, "Safe parlay across matches
 
 
 def family(market: str) -> str:
+    if market in more.HALF_MARKETS:
+        return "halves"
+    if market in more.VOID_MARKETS:
+        return "refund"
+    if market in _NEW_ONLY:
+        return "more_ft"
     return "team_goals" if market in ("home_goals", "away_goals") else market
 
 
 def canonical(market: str, sel: str) -> bool:
     """One side of each yes/no question, so nothing is counted twice."""
+    if market in _NEW_ONLY:  # ADR 0028: many-way markets count every selection
+        if market in ("dnb", "ahc"):
+            return sel.startswith("home")
+        return sel not in ("no", "under")
     if market in ("1x2", "score", "wtn"):
         return True
     if market == "dc":
@@ -122,6 +136,14 @@ class Baseline:
                 tot = g[cols].sum(axis=1, min_count=len(cols)).to_numpy(dtype=float)
                 ok = ~np.isnan(tot)
                 hit = np.where(ok, count_test(sel, float(line or 0))(np.nan_to_num(tot)), False)
+            elif (mk := more.find(market, sel, line)) is not None:
+                h, a = g["FTHG"].to_numpy(int), g["FTAG"].to_numpy(int)
+                ht = g.reindex(columns=["HTHG", "HTAG"]).to_numpy(float)
+                h1, a1 = np.nan_to_num(ht[:, 0]).astype(int), np.nan_to_num(ht[:, 1]).astype(int)
+                ok = np.isfinite(ht).all(axis=1) if mk.half else np.ones(len(g), bool)
+                if mk.void is not None:
+                    ok &= ~np.asarray(mk.void(h, a, h1, a1), dtype=bool)
+                hit = np.asarray(mk.win(h, a, h1, a1), dtype=bool)
             else:
                 h, a = g["FTHG"].to_numpy(int), g["FTAG"].to_numpy(int)
                 ok = np.ones(len(g), bool)

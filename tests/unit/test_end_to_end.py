@@ -125,6 +125,7 @@ def world(tmp_path):
     rec[
         ~rec["market"].isin(["1x2", "ou25", "btts"]) & ~rec["market"].str.startswith("cards")
     ].to_csv(conf / "track_record_goals.csv", index=False)
+    shutil.copy(ROOT / "reports" / "confidence" / "market_skill.csv", conf / "market_skill.csv")
     cal = tmp_path / "reports" / "calibration"
     cal.mkdir(parents=True)
     (cal / "calibration.json").write_text(

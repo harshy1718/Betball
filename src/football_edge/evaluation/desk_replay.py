@@ -23,9 +23,16 @@ import pandas as pd
 from football_edge.models.calibration import adjust_draws, block_bootstrap
 from football_edge.models.dixon_coles import score_grid
 from football_edge.predict.confidence import build_track_record
+from football_edge.trader import markets as more
 from football_edge.trader.desk import Desk, family
 from football_edge.trader.legs import Leg, LegFactory, count_test, goal_test
-from football_edge.trader.record import build_goal_record
+from football_edge.trader.record import (
+    best_set,
+    build_goal_record,
+    build_new_record,
+    market_skill,
+    new_market_rows,
+)
 from football_edge.trader.slip import Book, History
 
 CARD_LINES = (3.5, 4.5, 5.5, 6.5)
@@ -55,7 +62,11 @@ class _Replay(Desk):
 _G: dict[str, Any] = {}
 
 
-def _won(leg: Leg, hg: int, ag: int, cards: float) -> bool | None:
+def _won(leg: Leg, hg: int, ag: int, cards: float, h1: float = float("nan"),
+         a1: float = float("nan")) -> bool | None:  # fmt: skip
+    mk = more.find(leg.market, leg.sel, leg.line)
+    if mk is not None:  # ADR 0028 markets: None when refunded or half-time unknown
+        return more.outcome(mk, hg, ag, None if np.isnan(h1) else h1, None if np.isnan(a1) else a1)
     if leg.market == "cards":
         return (
             None
@@ -100,10 +111,13 @@ def _match(i: int) -> tuple[list[dict[str, Any]], Any]:
     model = GridModel(_G["rho"], float(getattr(r, "cal_delta", 0.0) or 0.0))
     legs = _G["factories"][int(r.season)].for_match(info, f, model)
     grid = model.score_matrix(float(r.exp_home), float(r.exp_away))
-    book = Book({mid: grid}, {mid: counts}, _G["hist"][pd.Timestamp(r.snapshot)])
+    shares = _G["shares"].get(int(r.season), {}).get(str(r.league))
+    book = Book({mid: grid}, {mid: counts}, _G["hist"][pd.Timestamp(r.snapshot)],
+                {mid: shares} if shares else {})  # fmt: skip
     d = _Replay(conf, {"legs": {mid: legs}, "book": book})
     cards = float(_G["card_totals"][int(r.row)])
     hg, ag = int(r.goals_home), int(r.goals_away)
+    h1, a1 = (float(x) for x in _G["ht"][int(r.row)])
     base = {
         "i": i,
         "date": r.date,
@@ -128,14 +142,14 @@ def _match(i: int) -> tuple[list[dict[str, Any]], Any]:
                 "markets": x.market,
                 "p": x.p,
                 "n_legs": 1,
-                "won": _won(x, hg, ag, cards),
+                "won": _won(x, hg, ag, cards, h1, a1),
             }
         )
     pool = d._pool(mid, float(conf.get("parlay_leg_max", 0.95)))
     for kind, rule in d.kinds().items():
         combo = d.best_parlay(pool, rule["floor"], rule["max_legs"], rule["high_only"])
         if combo:
-            ws = [_won(x, hg, ag, cards) for x in combo]
+            ws = [_won(x, hg, ag, cards, h1, a1) for x in combo]
             out.append(
                 {
                     **base,
@@ -149,7 +163,7 @@ def _match(i: int) -> tuple[list[dict[str, Any]], Any]:
                 }
             )
     first = singles[0] if singles else None
-    won_first = _won(first, hg, ag, cards) if first is not None else None
+    won_first = _won(first, hg, ag, cards, h1, a1) if first is not None else None
     return out, (i, first, won_first)
 
 
@@ -170,11 +184,20 @@ def replay(
     lo, hi = seasons
     p = preds[preds["season"].between(lo, hi)].reset_index(drop=True)
     factories = {}
+    # ADR 0029 replays: every market, with walk-forward best lists
+    extended = bool(conf.get("best_only", False) or conf.get("add_best", False))
+    shares: dict[int, dict[str, tuple[float, float]]] = {}
     for s in range(lo, hi + 1):
         past = (FIRST_LABEL_SEASON, s - 1)
         rec = build_track_record(preds, counts, matches, seasons=past)
         extra = build_goal_record(preds, rho, seasons=past)
-        record = pd.concat([rec, extra], ignore_index=True)
+        parts = [rec, extra]
+        best = None
+        if extended:
+            parts.append(build_new_record(new_market_rows(preds, rho, matches, past)))
+            best = best_set(market_skill(preds, counts, matches, rho, past))
+            shares[s] = more.half_shares(matches, before_season=s)
+        record = pd.concat(parts, ignore_index=True)
         factories[s] = LegFactory(
             record,
             tuple(conf.get("no_skill_markets", ["corners"])),
@@ -183,6 +206,9 @@ def replay(
                     float(x) for x in (conf.get("count_lines") or {}).get("cards", (3.5, 4.5, 5.5))
                 )
             },
+            extended=extended,
+            half_shares=shares.get(s),
+            best=best,
         )
     hist = {
         pd.Timestamp(w): History.from_matches(matches, before=pd.Timestamp(w))
@@ -199,6 +225,8 @@ def replay(
         "hist": hist,
         "cards": card_rows,
         "card_totals": totals,
+        "shares": shares,
+        "ht": matches[["HTHG", "HTAG"]].to_numpy(float),
     }
     with Pool(workers, initializer=_init, initargs=(state,)) as pool:
         res = pool.map(_match, range(len(p)), chunksize=25)
@@ -212,9 +240,12 @@ def replay(
         group = [firsts[k] for k in idx]
         legs = [g[1] for g in group]
         won = {g[1].key: g[2] for g in group}
-        grids, cnts = {}, {}
+        grids, cnts, shr = {}, {}, {}
         for g in group:
             r = p.iloc[g[0]]
+            sh = shares.get(int(r.season), {}).get(str(r.league))
+            if sh:
+                shr[g[1].match_id] = sh
             grids[g[1].match_id] = GridModel(
                 rho, float(getattr(r, "cal_delta", 0.0) or 0.0)
             ).score_matrix(float(r.exp_home), float(r.exp_away))
@@ -225,7 +256,7 @@ def replay(
                 if f"p_team_{ln}" in crow and not pd.isna(crow[f"p_team_{ln}"])
             }
         snap = pd.Timestamp(p.iloc[group[0][0]]["snapshot"])
-        d._st = {"legs": {}, "book": Book(grids, cnts, hist[snap])}
+        d._st = {"legs": {}, "book": Book(grids, cnts, hist[snap], shr)}
         legs.sort(key=lambda x: x.p, reverse=True)
         r0 = p.iloc[group[0][0]]
         for kind, rule in d.kinds().items():

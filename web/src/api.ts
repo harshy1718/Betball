@@ -108,6 +108,16 @@ export interface DeskLeg {
   confidence: string;
   skill: boolean;
   weak: boolean;
+  board?: boolean; // false: an ADR 0028 market, shown and logged but not used by Nox's picks
+  group?: string;
+  refund?: boolean; // draw no bet / Asian whole lines: stake back on the refund result
+  best?: boolean; // a best market (ADR 0029): the model predicts this kind of bet well
+}
+
+export interface DeskOptions {
+  match: { id: string; home: string; away: string; league: string; kickoff_utc: string };
+  legs: DeskLeg[];
+  groups: string[];
 }
 
 export interface Slip {
@@ -181,6 +191,7 @@ export const desk = {
   save: (keys: string[], price?: number | null, stake?: number | null) =>
     post<SavedSlip>("/api/desk/save", { keys, price: price ?? null, stake: stake ?? null }),
   history: () => get<DeskHistory>("/api/desk/history"),
+  options: (mid: string) => get<DeskOptions>(`/api/desk/options/${encodeURIComponent(mid)}`),
 };
 
 // -- live tracking: scorecard and Instagram posts (private) ---------------------------------

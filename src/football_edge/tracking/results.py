@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from football_edge.trader import markets as more
 from football_edge.trader.legs import count_test, goal_test
 
 COUNT_MARKETS = ("corners", "cards")
@@ -25,7 +26,12 @@ def count_total(row: Any, market: str) -> float | None:
 
 
 def leg_won(row: Any, market: str, sel: str, line: float | None) -> bool | None:
-    """Did this leg come in? None when the result lacks the needed stat."""
+    """Did this leg come in? None when the result lacks the needed stat, or the bet was
+    refunded (ADR 0028 refund markets)."""
+    mk = more.find(market, sel, line)
+    if mk is not None:
+        get = row.get if hasattr(row, "get") else (lambda c: getattr(row, c, None))
+        return more.outcome(mk, int(row["FTHG"]), int(row["FTAG"]), get("HTHG"), get("HTAG"))
     if market in COUNT_MARKETS:
         tot = count_total(row, market)
         if tot is None or line is None:

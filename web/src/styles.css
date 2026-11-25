@@ -486,3 +486,16 @@ a.card:hover { border-color: var(--line); }
   .sc-recent-row { grid-template-columns: 1fr; gap: 6px; }
   .sc-recent-calls { justify-content: flex-start; }
 }
+
+/* All markets (ADR 0028) */
+.all-markets { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.am-group { border-radius: 14px; background: var(--panel-2); padding: 8px 12px; }
+.am-group summary { cursor: pointer; font-weight: 700; min-height: 32px; display: flex; align-items: center; gap: 6px; }
+.am-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.am-list li.weak { box-shadow: inset 3px 0 0 var(--pink); border-radius: 8px; }
+.am-row { display: grid; grid-template-columns: auto 1fr auto 3.5em auto; align-items: center; gap: 10px; padding: 6px 8px; cursor: pointer; }
+.am-row .leg-p { font-size: 15px; }
+.am-label { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tag { font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--sub); text-transform: uppercase; }
+@media (max-width: 560px) { .am-row { grid-template-columns: auto 1fr auto auto; } .am-row > .muted { display: none; } }
+.tag-best { border-color: #9fe6b8; color: #9fe6b8; }

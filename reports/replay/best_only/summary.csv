@@ -1,0 +1,7 @@
+slip,n,matches_or_days,avg_legs,predicted,landed,gap,gap_lo,gap_hi,longest_losing_run
+Good singles,38706,1044,1.0,0.7555,0.7578,0.0023,-0.0026,0.0071,9
+Top single per match,10517,1044,1.0,0.8017,0.8089,0.0072,-0.0008,0.0149,6
+Safe parlay (same match),10134,1043,2.18,0.6148,0.6207,0.0059,-0.0041,0.016,11
+Risky parlay (same match),9030,1037,2.73,0.3477,0.3488,0.0011,-0.0092,0.0112,21
+Safe parlay across matches (per day),888,220,2.37,0.6277,0.6633,0.0356,0.0054,0.0641,5
+Risky parlay across matches (per day),902,221,4.13,0.4214,0.4601,0.0387,0.0073,0.0706,13

@@ -22,17 +22,22 @@ import numpy as np
 import pandas as pd
 
 from football_edge.predict.confidence import lookup
+from football_edge.trader import markets as more
 from football_edge.trader.record import goal_markets
 
 # Lines Harsh's site offers (22 Nov 2026); configurable as trader.count_lines.
 COUNT_LINES = {"corners": (8.5, 9.5, 10.5), "cards": (3.5, 4.5, 5.5)}
 EXTRA = ("goals", "home_goals", "away_goals", "hcp", "wtn", "oddeven")
-GOAL_MARKETS = ("1x2", "dc", "ou25", "btts", "score", *EXTRA)
+GOAL_MARKETS = tuple(dict.fromkeys(("1x2", "dc", "ou25", "btts", "score", *EXTRA,
+                                    *more.NEW_MARKETS)))  # fmt: skip
 _EXTRA_TESTS = {(m, sel): t for m, sels in goal_markets().items() for sel, t in sels}
 
 
 def record_key(market: str, sel: str, line: float | None) -> str:
     """The track-record market for an extra goal leg ('home-1.5' -> 'hcp_home2')."""
+    mk = more.find(market, sel, line)
+    if mk is not None:
+        return mk.key
     if market in ("goals", "home_goals", "away_goals"):
         return f"{market}_{line}"
     if market == "hcp":
@@ -59,6 +64,8 @@ class Leg:
     confidence: str
     skill: bool
     p_raw: float | None = None  # the uncalibrated chance, for the prediction log (ADR 0020)
+    board: bool = True  # may the board's own picks use it? (ADR 0028 markets: not yet)
+    best: bool = False  # a best market (ADR 0029): the model predicts this kind of bet well
 
     @property
     def key(self) -> str:
@@ -73,10 +80,27 @@ class Leg:
 
 
 # -- what each leg means, as a test on the final score / totals --------------------------
-def goal_test(
+def goal_test(market: str, sel: str, line: float | None = None) -> Callable[..., np.ndarray]:
+    """For goal legs: a function of (home goals, away goals[, half-time home, half-time away])
+    arrays -> won? Half markets (ADR 0028) need the half-time goals; refund markets answer
+    "won" only (see markets.Market.void)."""
+    mk = more.find(market, sel, line)
+    if mk is not None:
+        def test(h: np.ndarray, a: np.ndarray, h1: np.ndarray | None = None,
+                 a1: np.ndarray | None = None) -> np.ndarray:  # fmt: skip
+            if mk.half and (h1 is None or a1 is None):
+                raise ValueError(f"{market} needs the half-time score")
+            z = np.zeros_like(h)
+            return np.asarray(mk.win(h, a, z if h1 is None else h1, z if a1 is None else a1))
+
+        return test
+    base = _ft_test(market, sel, line)
+    return lambda h, a, h1=None, a1=None: base(h, a)
+
+
+def _ft_test(
     market: str, sel: str, line: float | None = None
 ) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
-    """For goal legs: a function of (home goals, away goals) arrays -> won?"""
     if market in EXTRA:
         return _EXTRA_TESTS[(record_key(market, sel, line), sel)]
     if market == "1x2":
@@ -112,6 +136,9 @@ class LegFactory:
         record: pd.DataFrame | None,
         no_skill: tuple[str, ...] = ("corners",),
         count_lines: dict[str, tuple[float, ...]] | None = None,
+        extended: bool = False,
+        half_shares: dict[str, tuple[float, float]] | None = None,
+        best: set[tuple[str, str, float | None]] | None = None,
     ) -> None:
         """`no_skill`: bet types treated as having no model skill whatever the track record
         says. Corners: the team model is no better than the league average (ADR 0008).
@@ -119,6 +146,9 @@ class LegFactory:
         self.record = record
         self.no_skill = no_skill
         self.count_lines = count_lines or COUNT_LINES
+        self.extended = extended  # the ADR 0028 markets (full time, refund and half markets)
+        self.half_shares = half_shares or {}
+        self.best = best or set()  # (market, sel, line) of the best markets (ADR 0029)
         self._skill: dict[str, bool] = {}
         if record is not None:
             mod = record[record["source"] == "model"]
@@ -197,6 +227,7 @@ class LegFactory:
             track: str,
             track_p: float | None = None,
             p_raw: float | None = None,
+            board: bool = True,
         ) -> None:
             conf, skill = self.trust(track, p if track_p is None else track_p)
             legs.append(
@@ -209,7 +240,10 @@ class LegFactory:
                     p=float(p),
                     confidence=conf,
                     skill=skill,
-                    p_raw=p_raw if p_raw is not None else raw_of(market, sel, line),
+                    p_raw=p_raw if p_raw is not None else (None if not board
+                                                           else raw_of(market, sel, line)),
+                    board=board,
+                    best=(market, sel, None if line is None else float(line)) in self.best,
                 )
             )
 
@@ -232,6 +266,17 @@ class LegFactory:
             for market, sel, line, label in self._extra_bets(hn, an):
                 p = float(m[goal_test(market, sel, line)(gh, ga)].sum())
                 add(market, sel, line, label, p, record_key(market, sel, line))
+            if self.extended:
+                shares = self.half_shares.get(str(info["league"]))
+                cat = more.CATALOGUE
+                sh = None if shares is None else (np.array([shares[0]]), np.array([shares[1]]))
+                ps = more.chances(m, cat, sh)[0]
+                rs = None if raw_grid is None else more.chances(raw_grid, cat, sh)[0]
+                for j, mk in enumerate(cat):
+                    if not np.isfinite(ps[j]):
+                        continue
+                    add(mk.market, mk.sel, mk.line, mk.label.format(h=hn, a=an), float(ps[j]),
+                        mk.key, p_raw=None if rs is None else float(rs[j]), board=False)
             order = np.argsort(m, axis=None)[::-1][:3]
             for i, j in zip(*np.unravel_index(order, m.shape), strict=True):
                 legs.append(

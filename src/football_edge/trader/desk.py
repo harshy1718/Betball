@@ -30,6 +30,7 @@ import pandas as pd
 
 from football_edge.betting.ledger import month_status, read_log
 from football_edge.config import Config
+from football_edge.trader import markets as more
 from football_edge.trader.legs import COUNT_LINES, Leg, LegFactory, count_test, goal_test
 from football_edge.trader.slip import Book, History, check
 from football_edge.web.service import NoxService
@@ -51,7 +52,29 @@ SLIP_COLS = [
 
 
 FAMILIES = {"1x2": "result", "dc": "result", "hcp": "result", "wtn": "result",
-            "ou25": "total", "goals": "total"}  # fmt: skip
+            "ou25": "total", "goals": "total",
+            **{m.market: m.family for m in more.CATALOGUE if m.market != "goals"}}  # fmt: skip
+
+
+GROUPS = [  # how the All markets list is grouped on the desk page
+    ("Result", ("1x2", "dc", "dnb", "margin")),
+    ("Handicaps", ("hcp", "ahc")),
+    ("Goals", ("ou25", "goals", "atot", "exact", "range", "oddeven")),
+    ("Team goals", ("home_goals", "away_goals", "home_exact", "away_exact", "cs_home",
+                    "cs_away", "wtn")),
+    ("Both score & combos", ("btts", "res_btts", "res_ou", "ou_btts")),
+    ("Correct score", ("score",)),
+    ("1st half", ("fh1x2", "fhgoals", "fhbtts")),
+    ("2nd half", ("sh1x2", "shgoals", "shbtts")),
+    ("Half-time / full-time", ("htft", "hsh", "bh_home", "bh_away")),
+    ("Cards", ("cards",)),
+    ("Corners", ("corners",)),
+]  # fmt: skip
+_GROUP = {m: name for name, ms in GROUPS for m in ms}
+
+
+def group(market: str) -> str:
+    return _GROUP.get(market, "Other")
 
 
 def family(market: str) -> str:
@@ -97,17 +120,25 @@ class Desk:
             if self._cache is not None and self._cache[0] == sl.key:
                 return self._cache[1]
             history = self.svc.history()
+            latest = int(history["season"].max()) if len(history) else None
+            shares = more.half_shares(history, before_season=latest)  # ADR 0028
             factory = LegFactory(
                 self._record(),
                 tuple(self.conf.get("no_skill_markets", ["corners"])),
                 self._count_lines(),
+                extended=bool(self.conf.get("extended_markets", True)),
+                half_shares=shares,
+                best=self._best(),
             )
-            matches, legs, grids, counts = [], {}, {}, {}
+            self._has_best = bool(factory.best)
+            matches, legs, grids, counts, by_match = [], {}, {}, {}, {}
             for _, f in sl.fc.iterrows():
                 info = self.svc.summary(f)
                 ls = factory.for_match(info, f, sl.model)
                 matches.append(info)
                 legs[info["id"]] = ls
+                if str(info["league"]) in shares:
+                    by_match[info["id"]] = shares[str(info["league"])]
                 grids[info["id"]] = sl.model.score_matrix(
                     float(f["exp_home"]), float(f["exp_away"])
                 )
@@ -116,7 +147,7 @@ class Desk:
                     for c in f.index
                     if c.startswith(("p_corners_over_", "p_cards_over_")) and pd.notna(f[c])
                 }
-            book = Book(grids, counts, History.from_matches(history))
+            book = Book(grids, counts, History.from_matches(history), by_match)
             state = {"matches": matches, "legs": legs, "book": book, "history": history}
             self._cache = (sl.key, state)
             return state
@@ -138,6 +169,24 @@ class Desk:
             return base
         return pd.concat([base, pd.read_csv(extra)], ignore_index=True)
 
+    def _best(self) -> set[tuple[str, str, float | None]]:
+        """The best markets (ADR 0029), from reports/confidence/market_skill.csv. Without that
+        file (run build-confidence) the board falls back to its older markets."""
+        from football_edge.trader.record import best_set
+
+        path = self.cfg.reports_dir / "confidence" / "market_skill.csv"
+        return best_set(pd.read_csv(path)) if path.exists() else set()
+
+    def _eligible(self, x: Leg, single: bool) -> bool:
+        """May the board use this leg? `best_only`: best markets only; `add_best`: the markets the
+        board always used plus every best market (ADR 0029); refund bets as singles only."""
+        ok_void = single or x.market not in more.VOID_MARKETS
+        if bool(self.conf.get("best_only", False)) and getattr(self, "_has_best", True):
+            return x.best and ok_void
+        if bool(self.conf.get("add_best", False)):  # the old board markets plus every best market
+            return x.board or (x.best and ok_void)
+        return x.board
+
     def leg(self, key: str) -> Leg:
         mid = key.split("|", 1)[0]
         legs: list[Leg] = self._state()["legs"].get(mid, [])
@@ -151,7 +200,11 @@ class Desk:
         if match_id not in st["legs"]:
             raise KeyError(match_id)
         info = next(m for m in st["matches"] if m["id"] == match_id)
-        return {"match": info, "legs": [x.to_dict() for x in st["legs"][match_id]]}
+        legs = [
+            {**x.to_dict(), "group": group(x.market), "refund": x.market in more.VOID_MARKETS}
+            for x in st["legs"][match_id]
+        ]
+        return {"match": info, "legs": legs, "groups": [g for g, _ in GROUPS]}
 
     def check(self, keys: list[str], price: float | None = None) -> dict[str, Any]:
         legs = [self.leg(k) for k in keys]
@@ -186,6 +239,7 @@ class Desk:
             x
             for x in self._state()["legs"][mid]
             if lo <= x.p <= hi
+            and self._eligible(x, single=True)
             and not x.weak
             and x.market != "score"
             and (corners or x.market != "corners")
@@ -201,6 +255,7 @@ class Desk:
             x
             for x in self._state()["legs"][mid]
             if lo <= x.p <= hi
+            and self._eligible(x, single=False)
             and not x.weak
             and x.market != "score"
             and (corners or x.market != "corners")
@@ -373,7 +428,7 @@ class Desk:
         log = settle(self._read(), self._state()["history"])
         if len(log):
             log.to_csv(self.path, index=False)
-        done = log[log["result"].notna()]
+        done = log[log["result"].notna() & log["won"].astype(str).str.lower().ne("void")]
         record = []
         for risk, g in done.groupby("risk"):
             won = g["won"].astype(str).str.lower().eq("true")
@@ -424,7 +479,13 @@ def settle(log: pd.DataFrame, matches: pd.DataFrame) -> pd.DataFrame:
                 break
             r = hit.iloc[0]
             h, a = np.array([int(r["FTHG"])]), np.array([int(r["FTAG"])])
-            if x["market"] in ("corners", "cards"):
+            mk = more.find(x["market"], x["sel"], x.get("line"))
+            if mk is not None:  # ADR 0028 markets: may need half-time, may be refunded
+                if mk.half and (pd.isna(r.get("HTHG")) or pd.isna(r.get("HTAG"))):
+                    break
+                res = more.outcome(mk, int(r["FTHG"]), int(r["FTAG"]), r.get("HTHG"), r.get("HTAG"))
+                wins.append(res)  # None = refunded
+            elif x["market"] in ("corners", "cards"):
                 tot = (
                     (r["HC"] + r["AC"])
                     if x["market"] == "corners"
@@ -437,8 +498,12 @@ def settle(log: pd.DataFrame, matches: pd.DataFrame) -> pd.DataFrame:
                 wins.append(bool(goal_test(x["market"], x["sel"], x.get("line"))(h, a)[0]))
             scores.append(f"{int(r['FTHG'])}-{int(r['FTAG'])}")
         else:
-            won = all(wins)
             log.at[k, "result"] = ", ".join(scores)
+            if any(w is None for w in wins):  # a refund bet came back: no win, no loss
+                log.at[k, "won"] = "void"
+                log.at[k, "profit"] = 0.0
+                continue
+            won = all(wins)
             log.at[k, "won"] = won
             price = pd.to_numeric(pd.Series([log.at[k, "price"]]), errors="coerce").iloc[0]
             stake = float(

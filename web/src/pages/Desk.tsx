@@ -5,7 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import Nox from "../components/Nox";
 import { Loading, Page, PrivateTabs, Problem } from "../components/ui";
 import { handicapTable } from "../format";
-import { desk, pct, useApi, type Board, type DeskLeg, type Mood, type Review, type Slip } from "../api";
+import { desk, pct, useApi, type Board, type DeskLeg, type DeskOptions, type Mood, type Review, type Slip } from "../api";
 
 const riskClass = (r: string) => `risk risk-${r.toLowerCase().replace(" ", "-")}`;
 
@@ -190,6 +190,102 @@ function SingleRow({ s, showMatch = false, why = false }: { s: Slip; showMatch?:
   );
 }
 
+// Every market the desk can price for one match, grouped; tick legs to check your own slip.
+function AllMarkets({ mid }: { mid: string }) {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<DeskOptions | null>(null);
+  const [error, setError] = useState("");
+  const [picked, setPicked] = useState<string[]>([]);
+  const [slip, setSlip] = useState<Slip | null>(null);
+  const [busy, setBusy] = useState(false);
+  const nBest = (data?.legs ?? []).filter((l) => l.best).length;
+  useEffect(() => {
+    if (!open || data) return;
+    desk.options(mid).then(setData, (e: Error) => setError(e.message));
+  }, [open, data, mid]);
+  const byGroup = useMemo(() => {
+    const out = new Map<string, DeskLeg[]>();
+    for (const g of data?.groups ?? []) out.set(g, []);
+    for (const l of data?.legs ?? []) {
+      if (!l.best) continue; // your own slips: only bets the model predicts well (ADR 0029)
+      const g = l.group ?? "Other";
+      if (!out.has(g)) out.set(g, []);
+      out.get(g)!.push(l);
+    }
+    return [...out.entries()].filter(([, ls]) => ls.length > 0);
+  }, [data]);
+  const toggle = (key: string) => {
+    setSlip(null);
+    setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]));
+  };
+  async function check() {
+    setBusy(true);
+    setError("");
+    try {
+      setSlip(await desk.check(picked));
+    } catch (e) {
+      setError((e as Error).message);
+      setSlip(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="stack-8 all-markets" aria-label="All markets">
+      <button type="button" className="link-btn" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        {open ? "Hide markets" : "Build your own slip"} {data ? `(${nBest} good bets)` : ""}
+      </button>
+      {open && !data && !error && <span className="muted small">Loading every market…</span>}
+      {open && data && (
+        <>
+          <p className="muted small">
+            Only the bets our model predicts well: on 2020-26 matches each beat a plain average by 5%+ and its chances held up.
+            Mostly bets on who is stronger (result, handicaps, team goals); goal-count bets (over/under, both score) are close to
+            coin flips for the model and are not offered. Fair odds = 1 ÷ chance. <b>Refund</b> bets (draw no bet, Asian whole
+            lines) give the stake back on the refund result; their chance is for when there is no refund, and they are singles
+            only. Every bet is logged and graded daily on the scorecard.
+          </p>
+          {byGroup.map(([g, ls]) => (
+            <details key={g} className="am-group">
+              <summary>
+                {g} <span className="muted small">({ls.length})</span>
+              </summary>
+              <ul className="am-list">
+                {ls.map((l) => (
+                  <li key={l.key} className={l.weak ? "weak" : ""}>
+                    <label className="am-row">
+                      <input type="checkbox" checked={picked.includes(l.key)} onChange={() => toggle(l.key)} />
+                      <span className="am-label">
+                        {l.label}
+                        {l.refund && <span className="tag small">refund</span>}
+                      </span>
+                      <span className="leg-p">{pct(l.p)}</span>
+                      <span className="muted small">{l.p > 0 ? (1 / l.p).toFixed(2) : "–"}</span>
+                      <Conf l={l} />
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ))}
+          <div className="row-8">
+            <button type="button" className="btn btn-gold btn-sm" disabled={!picked.length || busy} onClick={() => void check()}>
+              {busy ? "Checking…" : `Check ${picked.length > 1 ? `slip of ${picked.length}` : "bet"}`}
+            </button>
+            {picked.length > 0 && (
+              <button type="button" className="link-btn" onClick={() => { setPicked([]); setSlip(null); }}>
+                Clear
+              </button>
+            )}
+          </div>
+        </>
+      )}
+      {error && <p className="warning small">{error}</p>}
+      {slip && <SlipCard slip={{ ...slip, title: "Your slip", why: "built from All markets" }} />}
+    </section>
+  );
+}
+
 function MatchBoard({ m, focus = false }: { m: Board["matches"][number]; focus?: boolean }) {
   const { match } = m;
   const golden = m.singles.filter((x) => x.title === "Golden single");
@@ -241,6 +337,7 @@ function MatchBoard({ m, focus = false }: { m: Board["matches"][number]; focus?:
           ))}
         </div>
       </div>
+      <AllMarkets mid={match.id} />
     </article>
   );
 }
@@ -484,7 +581,7 @@ export default function Desk() {
               <section aria-label="Top of the board" className="stack-14">
                 <div className="section-head">
                   <h2>Top of the board</h2>
-                  <span className="legend">Next 3 days · odd/even left out (no skill) · correct scores only as singles</span>
+                  <span className="legend">Next 3 days · every good bet, old and new · correct scores and refund bets only as singles</span>
                 </div>
                 <div className="cards slips">
                   {board.data.top.map((s) => (
