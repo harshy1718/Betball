@@ -3,7 +3,7 @@
 Run with `football-edge serve`. Routes:
   GET /api/meta              model date, data warning
   GET /api/next?n=5          the next n matches
-  GET /api/matches?league=   every match in the next days (league: E0, I1, SP1)
+  GET /api/matches?league=   every match in the next days (league: E0, I1, SP1, D1, F1)
   GET /api/matches/{id}      one match in full: grid, form, meetings, golden calls
   GET /api/golden            tonight's golden calls, the bars, the tracker
   GET /api/ask/status        is the local LLM ready for Ask Nox

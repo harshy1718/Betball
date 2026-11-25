@@ -25,12 +25,13 @@ from typing import Any
 import pandas as pd
 import yaml
 
+from football_edge.leagues import FOOTBALL_DATA_ORG
 from football_edge.predict.fixtures import season_of
 
 log = logging.getLogger(__name__)
 
 API = "https://api.football-data.org/v4/competitions/{code}/matches"
-CODES = {"E0": "PL", "I1": "SA", "SP1": "PD"}
+CODES = FOOTBALL_DATA_ORG
 TOKEN_ENV = "FOOTBALL_DATA_ORG_KEY"
 _STOP = {
     "fc", "cf", "afc", "ac", "acf", "ssc", "ss", "as", "us", "sc", "cfc", "bc", "calcio",

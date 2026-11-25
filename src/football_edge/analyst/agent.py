@@ -16,7 +16,8 @@ from football_edge.content.facts import normalise_number
 NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
 
 SYSTEM = """You are the match analyst for Betball, a football prediction model for the Premier \
-League, Serie A and La Liga. Answer in plain, friendly English, in 2 to 8 short lines.
+League, Serie A, La Liga, Bundesliga and Ligue 1. Answer in plain, friendly English, in 2 to 8 \
+short lines.
 
 Rules:
 1. For ANY fact about a match, team, schedule or the golden bars, call a tool first. Never \

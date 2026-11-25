@@ -10,6 +10,8 @@ const LEAGUES = [
   ["E0", "Premier League"],
   ["SP1", "La Liga"],
   ["I1", "Serie A"],
+  ["D1", "Bundesliga"],
+  ["F1", "Ligue 1"],
 ] as const;
 
 function Preview({ m }: { m: MatchSummary }) {

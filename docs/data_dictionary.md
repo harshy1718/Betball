@@ -2,7 +2,7 @@
 
 | Column | Meaning |
 |---|---|
-| league | E0 = EPL, I1 = Serie A, SP1 = La Liga |
+| league | E0 = EPL, I1 = Serie A, SP1 = La Liga, D1 = Bundesliga, F1 = Ligue 1 (the last two since 25 Nov 2026, ADR 0024) |
 | season | start year (2018 = 2018/19) |
 | date | match date (no kickoff time in source) |
 | home, away | team names as in source, trimmed |

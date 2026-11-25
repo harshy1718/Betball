@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from football_edge.evaluation import window_search as ws
+from football_edge.evaluation.window_both import leagues_in
 
 LEAGUES = {"All three leagues": None, "Premier League": "E0", "Serie A": "I1", "La Liga": "SP1"}
 MARKETS = {"1x2": "Match winner", "ou25": "Over/under 2.5"}
@@ -54,7 +55,7 @@ def run(m: pd.DataFrame, m26: pd.DataFrame | None, seed: int = 0) -> str:
                   "| League | Rank | Bar | Bets 2018-22 | Return | Bets 2023-26 | Return "
                   "| Bets 2026/27 | Return 2026/27 | Bars profitable in both: real / luck |",
                   "|---|---|---|---|---|---|---|---|---|---|"]  # fmt: skip
-        for lname, lg in LEAGUES.items():
+        for lname, lg in leagues_in(m).items():
             t = table(m, market, lg)
             plc = table(m, market, lg, np.random.default_rng(seed))
             n_real = int((t["worse"] > 0).sum()) if len(t) else 0

@@ -79,8 +79,13 @@ def forecast(model: DixonColes, fixtures: pd.DataFrame, top_scores: int = 3) -> 
     g = np.arange(model.params.max_goals + 1)
     total = g[:, None] + g[None, :]
     rows = []
+    calibrated = getattr(model, "calibration", None) is not None
     for k in range(len(fixtures)):
         m = model.score_matrix(float(lam[k]), float(mu[k]))
+        # the uncalibrated grid: for the log's raw chances and for the golden bars, which
+        # were searched on raw chances (betting/golden.py: unadjusted)
+        r = model.raw_score_matrix(float(raw_lam[k]), float(raw_mu[k])) if calibrated else m
+        r_top = int(np.argmax(r))
         order = np.argsort(m, axis=None)[::-1][:top_scores]
         scores = [
             f"{i}-{j} ({m[i, j]:.0%})"
@@ -101,6 +106,12 @@ def forecast(model: DixonColes, fixtures: pd.DataFrame, top_scores: int = 3) -> 
                 "exp_away": float(mu[k]),
                 "raw_exp_home": float(raw_lam[k]),
                 "raw_exp_away": float(raw_mu[k]),
+                "raw_p_h": float(np.tril(r, -1).sum()),
+                "raw_p_d": float(np.trace(r)),
+                "raw_p_a": float(np.triu(r, 1).sum()),
+                "raw_p_over25": float(r[total >= 3].sum()),
+                "raw_top_score": f"{r_top // r.shape[1]}-{r_top % r.shape[1]}",
+                "raw_top_score_p": float(r.flat[r_top]),
                 "top_scores": ", ".join(scores),
                 "top_score": scores[0].split(" ")[0],
                 "top_score_p": float(m.flat[order[0]]),

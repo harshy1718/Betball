@@ -3,7 +3,7 @@ paths:
   raw: data/raw
   processed: data/processed
   reports: reports
-leagues: [E0, I1, SP1]            # EPL, Serie A, La Liga
+leagues: [E0, I1, SP1, D1, F1]    # EPL, Serie A, La Liga, Bundesliga, Ligue 1 (ADR 0024)
 odds:
   # First complete source wins, per row; the source used is stored with the row.
   closing_priority:
@@ -82,6 +82,18 @@ models:
     shots_weight: 0.25
     dynamic_weeks: 8        # tuned, locked: ratings may change every 8 weeks
     rw: 160.0               # tuned, locked (the slowest change in the grid won)
+  dixon_coles_per_league:   # challenger: a separate model per league (ADR 0023)
+    xi: 0.0025              # base = the combined model's settings ...
+    ridge: 1.0
+    max_goals: 10
+    no_crowd_start: "2020-06-01"
+    no_crowd_end: "2021-05-31"
+    min_promoted_matches: 5
+    shots_weight: 0.25
+    by_league:              # ... overridden per league: tuned on that league's 2018-19 only,
+      E0: {xi: 0.0019, ridge: 1.0, shots_weight: 0.25}   # locked
+      I1: {xi: 0.0035, ridge: 1.0, shots_weight: 0.25}   # (reports/tuning/
+      SP1: {xi: 0.0019, ridge: 2.0, shots_weight: 0.25}  #  dixon_coles_per_league.csv)
   dixon_coles_manager:      # dixon_coles + new-manager flag (ADR 0007); nothing retuned
     xi: 0.0025
     ridge: 1.0
@@ -127,6 +139,8 @@ staking:                    # docs/adr/0006-staking-policy.md
   confidence: model         # model = our own probabilities only (Harsh's choice, 21 Nov 2026);
                             # market = the margin-free market probability when prices exist
   golden_bar:               # match-winner golden bar (Harsh, 22 Nov 2026): the model's favourite
+    leagues: [E0, I1, SP1]  # Bundesliga/Ligue 1: no window beat luck (reports/golden_check)
+                            # every bar is checked on the UNADJUSTED chance, as searched
     lo: 0.60                # inside its league's window. UNPROVEN: windows from
     hi: 0.64                # reports/window_both_above_50 (best in both periods per league) and
     by_league:              # checked on 2026/27 (reports/season_2026). Logged and settled by
@@ -140,8 +154,15 @@ staking:                    # docs/adr/0006-staking-policy.md
     hi: 0.56                # 100 settled picks; drop if still losing.
     log_path: bets/golden_ou.csv
   golden_cs:                # correct-score golden bar (22 Nov 2026): back the likeliest score when
-    lo: 0.12                # its chance is 12%+. UNPROVEN: in 2020-26 it hit 14.7% (break-even 6.80);
-    log_path: bets/golden_cs.csv  # no historical correct-score prices exist. Judge at 200.
+    leagues: [E0, I1, SP1, D1, F1]  # all five since 25 Nov (Harsh): no prices exist to test any
+    lo: 0.12                # its chance is 12%+. UNPROVEN: no historical correct-score prices exist.
+    min_odds:               # per league: break-even = 1 / how often it came in, 2020-26 (rounded up)
+      SP1: 6.3              # 15.9% of 1,773
+      I1: 6.8               # 14.8% of 1,398
+      F1: 7.7               # 13.0% of 1,201
+      E0: 8.0               # 12.5% of 1,098
+      D1: 8.5               # 11.8% of 473
+    log_path: bets/golden_cs.csv  # Judge at 200 settled picks.
   disagree_at: 0.08         # flag picks where model and market differ by 8+ points
   doubles: {max_count: 2, stake_fraction: 0.01, min_leg_tier: high}
   log_path: bets/log.csv
@@ -166,6 +187,8 @@ content:
     E0: [Arsenal, Chelsea, Liverpool, Man City, Man United, Tottenham, Newcastle, Aston Villa]
     I1: [Inter, Milan, Juventus, Napoli, Roma, Lazio, Atalanta]
     SP1: [Real Madrid, Barcelona, Ath Madrid, Ath Bilbao, Sevilla, Betis, Sociedad, Villarreal]
+    D1: [Bayern Munich, Dortmund, Leverkusen, RB Leipzig, Ein Frankfurt, Stuttgart]
+    F1: [Paris SG, Marseille, Monaco, Lyon, Lille, Nice]
   videos_per_round: 3
   display_names:            # how the presenter says a club, where the automatic choice is wrong
     I1: {Milan: AC Milan}

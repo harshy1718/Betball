@@ -9,8 +9,8 @@
     "min_promoted_matches": 5,
     "shots_weight": 0.25
   },
-  "created_utc": "2026-11-19T21:15:30+00:00",
-  "git_sha": "f2bddff",
-  "data_sha256": "c25f47a43f628b2efb76d11bd82637c3148a98c0d105f986e03946bdeea920a9",
-  "n_predictions": 9120
+  "created_utc": "2026-11-24T20:38:48+00:00",
+  "git_sha": "unknown",
+  "data_sha256": "a9c36de09bfe98458c1b3e9bbc064f9848c9123333a0de3ecaa9acf9852c6aa1",
+  "n_predictions": 14285
 }

@@ -232,6 +232,8 @@ export interface Scorecard {
   confidence: { label: string; n: number; avg_p: number | null; hit: number | null; gap: number | null }[];
   slips: { title: string; n: number; expected: number | null; hit: number | null; won: number; floor: number | null }[];
   posted: { n: number; settled: number; won: number };
+  by_league: { league: string; name: string; overall: ScoreRow; result: ScoreRow | null;
+    calibration: { band: string; n: number; avg_p: number | null; hit: number | null }[] }[];
   calibration_check: {
     matches: number;
     calibrated: number | null;

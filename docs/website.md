@@ -94,7 +94,7 @@ cd web; npm run dev              # terminal 2: open http://localhost:5173
 |---|---|
 | `GET /api/meta` | model trained up to, number of matches, a warning when results are stale |
 | `GET /api/next?n=5` | the next n matches that have not kicked off |
-| `GET /api/matches?league=E0` | every match in the window (league optional: E0, I1, SP1) |
+| `GET /api/matches?league=E0` | every match in the window (league optional: E0, I1, SP1, D1, F1) |
 | `GET /api/matches/{id}` | one match in full, including the 6x6 score grid |
 | `GET /api/golden` | matches with golden calls, the bars, the tracker (counts only) |
 | `GET /api/ask/status` | is Ollama up with the analyst model |

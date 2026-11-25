@@ -383,9 +383,10 @@ def load(path: Path) -> tuple[GoalCalibration | None, CardCalibration | None]:
 
 
 def block_bootstrap(
-    diff: FloatArr, blocks: npt.NDArray[Any], reps: int = 2000, seed: int = 0
+    diff: FloatArr, blocks: npt.NDArray[Any], reps: int = 2000, seed: int = 0,
+    level: float = 0.95,
 ) -> tuple[float, float]:
-    """95% interval of the mean of `diff` resampling whole blocks (league x week)."""
+    """`level` (95%) interval of the mean of `diff` resampling whole blocks (league x week)."""
     rng = np.random.default_rng(seed)
     codes, inv = np.unique(blocks, return_inverse=True)
     sums = np.bincount(inv, weights=diff)
@@ -395,5 +396,6 @@ def block_bootstrap(
     for i in range(reps):
         pick = rng.integers(0, k, k)
         means[i] = sums[pick].sum() / counts[pick].sum()
-    lo, hi = np.percentile(means, [2.5, 97.5])
+    tail = (1 - level) / 2 * 100
+    lo, hi = np.percentile(means, [tail, 100 - tail])
     return float(lo), float(hi)

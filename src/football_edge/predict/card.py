@@ -7,12 +7,13 @@ from typing import Any
 
 import pandas as pd
 
-from football_edge.betting.golden import CS_MIN_ODDS, flags
+from football_edge.betting.golden import cs_min_odds, flags
 from football_edge.betting.staking import StakingPolicy
+from football_edge.leagues import NAMES
 from football_edge.predict.confidence import lookup
 from football_edge.predict.forecast import TrainingInfo
 
-_LEAGUE_NAMES = {"E0": "Premier League", "I1": "Serie A", "SP1": "La Liga"}
+_LEAGUE_NAMES = NAMES
 
 
 def _num(x: float, fmt: str) -> str:
@@ -61,7 +62,8 @@ def render_card(
             "## ⭐ Golden bets on this card",
             "",
             "Golden = inside a golden bar, whatever the price. All bars are UNPROVEN and tracked "
-            f"(`football-edge settle`). Correct score: only at {CS_MIN_ODDS:.2f} or more.",
+            "(`football-edge settle`). Correct score: only at the league's minimum price "
+            "(`golden_cs.min_odds`: the bar's break-even there).",
             "",
             "| Match | Match winner | Over/under 2.5 | Correct score |",
             "|---|---|---|---|",
@@ -111,10 +113,11 @@ def render_card(
             )
         if "top_score" in f:
             p_cs = float(f["top_score_p"])
+            cs_low = cs_min_odds(g.get("golden_cs"), str(f["league"]))
             lines.append(
                 f"| score | {f['top_score']} | {p_cs:.1%} model | - | {p_cs:.1%} | - "
-                f"| {1 / p_cs:.2f} | {CS_MIN_ODDS:.2f} | - | - | - | 0 "
-                f"| {'golden: take at ' + format(CS_MIN_ODDS, '.2f') + '+' if cs_gold else '-'} "
+                f"| {1 / p_cs:.2f} | {cs_low:.2f} | - | - | - | 0 "
+                f"| {'golden: take at ' + format(cs_low, '.2f') + '+' if cs_gold else '-'} "
                 f"| {'⭐' if cs_gold else '-'} |"
             )
         lines.append("")

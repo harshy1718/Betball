@@ -1,41 +1,41 @@
 Desk replay 2020/21-2025/26, calibrated chances, walk-forward labels and lifts.
 
                                  slip     n  matches_or_days  avg_legs  predicted  landed    gap  gap_lo  gap_hi  longest_losing_run
-                         Good singles 25870              640      1.00     0.7542  0.7580 0.0038 -0.0015  0.0092                   6
-                 Top single per match  6826              640      1.00     0.8016  0.8065 0.0049 -0.0043  0.0141                   5
-             Safe parlay (same match)  6672              640      2.38     0.6079  0.6226 0.0147  0.0029  0.0273                   9
-            Risky parlay (same match)  6012              637      3.16     0.3322  0.3338 0.0016 -0.0099  0.0135                  22
- Safe parlay across matches (per day)   842              218      2.23     0.6301  0.6544 0.0243 -0.0096  0.0590                   6
-Risky parlay across matches (per day)   887              218      3.93     0.4206  0.4476 0.0270 -0.0038  0.0579                  10
+                         Good singles 42380             1044      1.00     0.7717  0.7768 0.0051  0.0008  0.0090                   7
+                 Top single per match 10726             1044      1.00     0.8150  0.8289 0.0140  0.0069  0.0211                   5
+             Safe parlay (same match) 10687             1044      2.40     0.6055  0.6189 0.0134  0.0038  0.0225                  11
+            Risky parlay (same match) 10336             1044      3.45     0.3118  0.3171 0.0054 -0.0034  0.0145                  32
+ Safe parlay across matches (per day)   945              220      2.42     0.6313  0.6656 0.0344  0.0035  0.0648                   6
+Risky parlay across matches (per day)   985              221      4.21     0.4395  0.4863 0.0468  0.0160  0.0771                  10
 
         kind  season    n  predicted  landed
-       risky    2020  452     0.6146  0.5929
-       risky    2021 1044     0.3916  0.3908
-       risky    2022 1122     0.3183  0.3333
-       risky    2023 1115     0.2907  0.2744
-       risky    2024 1139     0.2763  0.2801
-       risky    2025 1140     0.2761  0.2912
-risky_across    2020  124     0.3401  0.3468
-risky_across    2021  146     0.3726  0.3699
-risky_across    2022  149     0.3974  0.3826
-risky_across    2023  158     0.4482  0.5000
-risky_across    2024  158     0.4768  0.5443
-risky_across    2025  152     0.4680  0.5132
-        safe    2020 1007     0.6228  0.6207
-        safe    2021 1119     0.6078  0.5898
-        safe    2022 1131     0.6055  0.6154
-        safe    2023 1135     0.6049  0.5991
-        safe    2024 1140     0.6044  0.6649
-        safe    2025 1140     0.6039  0.6447
- safe_across    2020   98     0.6066  0.6531
- safe_across    2021  139     0.6164  0.5899
- safe_across    2022  139     0.6208  0.6187
- safe_across    2023  157     0.6394  0.6815
- safe_across    2024  157     0.6423  0.7006
- safe_across    2025  152     0.6439  0.6711
-      single    2020 3188     0.7297  0.7199
-      single    2021 4472     0.7410  0.7408
-      single    2022 4544     0.7506  0.7553
-      single    2023 4551     0.7576  0.7596
-      single    2024 4555     0.7654  0.7721
-      single    2025 4560     0.7735  0.7886
+       risky    2020 1481     0.5042  0.5118
+       risky    2021 1777     0.2968  0.2909
+       risky    2022 1822     0.2812  0.3002
+       risky    2023 1752     0.2753  0.2660
+       risky    2024 1752     0.2713  0.2803
+       risky    2025 1752     0.2731  0.2848
+risky_across    2020  159     0.3363  0.3836
+risky_across    2021  161     0.4540  0.4658
+risky_across    2022  167     0.4531  0.4671
+risky_across    2023  165     0.4527  0.5455
+risky_across    2024  168     0.4752  0.5000
+risky_across    2025  165     0.4615  0.5515
+        safe    2020 1792     0.6107  0.6122
+        safe    2021 1813     0.6059  0.5996
+        safe    2022 1826     0.6049  0.6424
+        safe    2023 1752     0.6039  0.6005
+        safe    2024 1752     0.6038  0.6301
+        safe    2025 1752     0.6036  0.6284
+ safe_across    2020  121     0.6058  0.6033
+ safe_across    2021  160     0.6331  0.6438
+ safe_across    2022  166     0.6332  0.6084
+ safe_across    2023  165     0.6362  0.6788
+ safe_across    2024  168     0.6389  0.7560
+ safe_across    2025  165     0.6334  0.6848
+      single    2020 6803     0.7410  0.7419
+      single    2021 7263     0.7658  0.7672
+      single    2022 7298     0.7774  0.7761
+      single    2023 7005     0.7798  0.7869
+      single    2024 7004     0.7816  0.7907
+      single    2025 7007     0.7837  0.7972

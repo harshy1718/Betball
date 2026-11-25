@@ -56,6 +56,7 @@ def test_input_not_mutated(matches):
 def test_expected_fold_counts(matches, folds):
     # Guards against an empty or partial result. Without this, the tests above
     # pass on an empty list because their loops never run.
-    assert len(folds) == 294
-    assert sum(len(f.test_idx) for f in folds) == 3 * 8 * 380
-    assert len(folds[0].train_idx) == 3420 and len(folds[0].test_idx) == 10
+    # five leagues since ADR 0024: 3 x 8 x 380 + Bundesliga 8 x 306 + Ligue 1 2018-25
+    assert len(folds) == 302
+    assert sum(len(f.test_idx) for f in folds) == 14285
+    assert len(folds[0].train_idx) == 5478 and len(folds[0].test_idx) == 20

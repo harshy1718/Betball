@@ -18,9 +18,10 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from football_edge.leagues import NAMES
 from football_edge.predict.confidence import BAND, LOW_N, lookup
 
-LEAGUE_NAMES = {"E0": "Premier League", "I1": "Serie A", "SP1": "La Liga"}
+LEAGUE_NAMES = NAMES
 NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
 

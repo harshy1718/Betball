@@ -17,9 +17,10 @@ import pandas as pd
 
 from football_edge.config import Config, OddsSource
 from football_edge.data.schema import validate_matches
+from football_edge.leagues import FILE_PATTERN
 
 log = logging.getLogger(__name__)
-_FILE_RE = re.compile(r"^(E0|I1|SP1)")
+_FILE_RE = re.compile(FILE_PATTERN)
 # Results and in-match stats. These describe a match AFTER it is played: models may
 # learn from them for past matches but must never see them for the match predicted.
 _KEEP = (

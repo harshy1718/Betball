@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from football_edge.config import Config
+from football_edge.leagues import NAMES as LEAGUE_NAMES
 from football_edge.tracking.results import COUNT_MARKETS, Results, leg_won, parse_line
 from football_edge.tracking.snapshot import ledgers
 from football_edge.trader.legs import count_test, goal_test
@@ -254,6 +255,25 @@ def calibration_check(graded: pd.DataFrame) -> dict[str, Any] | None:
             "review_at": CAL_REVIEW_AT, "status": status}  # fmt: skip
 
 
+
+
+def by_league(graded: pd.DataFrame, base: Baseline, min_n: int) -> list[dict[str, Any]]:
+    """The overall accuracy row and the match-result row for each league on its own, so a
+    league that behaves differently shows up (ADR 0023)."""
+    out: list[dict[str, Any]] = []
+    if graded.empty:
+        return out
+    for lg, g in graded.groupby("league"):
+        acc = accuracy(g, base, min_n)
+        if acc["overall"] is None:
+            continue
+        res = next((r for r in acc["markets"] if r["family"] == "1x2"), None)
+        out.append({"league": str(lg), "name": LEAGUE_NAMES.get(str(lg), str(lg)),
+                    "overall": acc["overall"], "result": res,
+                    "calibration": acc["calibration"]})  # fmt: skip
+    return out
+
+
 def verdict(r: dict[str, Any], min_n: int) -> str:
     if r["n"] < min_n:
         return f"Too few to judge yet ({r['n']} of {min_n} needed)"
@@ -381,6 +401,7 @@ def build(cfg: Config, matches: pd.DataFrame, now: pd.Timestamp | None = None) -
         **acc,
         "slips": slip_record(books["slips"].read(), preds, results),
         "calibration_check": calibration_check(graded),
+        "by_league": by_league(graded, base, min_n),
         "posted": {
             "n": len(posts),
             "settled": len(done),

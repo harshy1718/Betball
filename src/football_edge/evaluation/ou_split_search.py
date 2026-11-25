@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from football_edge.evaluation import window_search as ws
+from football_edge.evaluation.window_both import leagues_in
 from football_edge.markets.price_edge import bootstrap_roi
 
 LEVEL = 1 - 0.05 / 8
@@ -22,7 +23,7 @@ def _side(c: pd.DataFrame, side: str) -> pd.DataFrame:
 def run(m: pd.DataFrame, seed: int = 0) -> str:
     rows: list[tuple[str, str, dict[str, Any] | None]] = []
     for side in ("over", "under"):
-        for lg_name, lg in LEAGUES.items():
+        for lg_name, lg in leagues_in(m).items():
             sub = m if lg is None else m[m["league"] == lg]
             disc = sub[sub["season"].between(*ws.DISCOVERY)]
             hold = sub[sub["season"].between(*ws.HOLDOUT)]

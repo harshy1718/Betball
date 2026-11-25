@@ -49,7 +49,7 @@ def test_set_price(tmp_path):
     fc["top_score"], fc["top_score_p"] = ["1-0", "2-0", "0-1"], [0.13, 0.11, 0.125]
     path = tmp_path / "cs.csv"
     golden.log_picks(golden.cs_picks(fc, 0.12), path, pd.Timestamp("2026-11-21"))
-    assert golden.set_price(path, "f", 8.0) == ["E v F: 0-1 at 8.00"]
+    assert golden.set_price(path, "f", 8.0) == ["E v F (E0): 0-1 at 8.00"]
     assert golden.read(path)["site_odds"].tolist()[1] == 8.0
     assert golden.set_price(path, "zzz", 8.0) == []
 

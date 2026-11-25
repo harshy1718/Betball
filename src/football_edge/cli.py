@@ -249,7 +249,7 @@ def _bar_test(args: argparse.Namespace) -> None:
     cfg = load_config(args.config)
     preds = pd.read_parquet(cfg.reports_dir / "evaluation" / "dixon_coles" / "predictions.parquet")
     report = run(preds, cfg.raw_dir, list(cfg.leagues))
-    out = cfg.reports_dir / "prob_bar"
+    out = cfg.reports_dir / (args.out or "prob_bar")
     out.mkdir(parents=True, exist_ok=True)
     (out / "verdict.md").write_text(report, encoding="utf-8")
     print(report)
@@ -269,7 +269,12 @@ def _window_search(args: argparse.Namespace) -> None:
     from football_edge.evaluation.prob_bar import load_prices
 
     cfg = load_config(args.config)
-    preds = pd.read_parquet(cfg.reports_dir / "evaluation" / "dixon_coles" / "predictions.parquet")
+    ev = cfg.reports_dir / "evaluation" / "dixon_coles"
+    if args.calibrated:  # the chances the site and desk show (ADR 0020): from 2019/20 only
+        preds = pd.read_parquet(ev / "predictions_calibrated.parquet")
+        window_search.DISCOVERY = (2019, 2022)
+    else:
+        preds = pd.read_parquet(ev / "predictions.parquet")
     preds["date"] = pd.to_datetime(preds["date"]).dt.normalize()
     prices = load_prices(cfg.raw_dir, list(cfg.leagues), range(2018, 2026))
     m = preds.merge(prices, on=["league", "date", "home", "away"], how="left")
@@ -283,7 +288,7 @@ def _window_search(args: argparse.Namespace) -> None:
             m26 = q.merge(pr26, on=["league", "date", "home", "away"], how="left")
         report = threshold_both.run(m, m26)
     elif args.both:
-        report = window_both.run(m, lo_min=args.above or 0.20)
+        report = window_both.run(m, lo_min=args.above or 0.20, shuffles=args.shuffles)
     elif args.by_league:
         report = bar_by_league.run(m, args.above or 0.20)
     elif args.ou_split:
@@ -295,7 +300,7 @@ def _window_search(args: argparse.Namespace) -> None:
         else ("window_both_above_50" if args.above else "window_both") if args.both
         else ("bar_above_50" if args.above else "bar_by_league") if args.by_league
         else "ou_split_search" if args.ou_split else "window_search"
-    )  # fmt: skip
+    ) if not args.out else cfg.reports_dir / args.out  # fmt: skip
     out.mkdir(parents=True, exist_ok=True)
     (out / "verdict.md").write_text(report, encoding="utf-8")
     print(report)
@@ -313,10 +318,13 @@ def _price(args: argparse.Namespace) -> None:
     done = golden.set_price(path, args.team, args.odds)
     if not done:
         raise SystemExit(f"no unsettled {args.bar} pick with a team matching '{args.team}'")
+    cs = cfg.staking.get("golden_cs") or {}
     for d in done:
         print(f"saved: {d}")
-    if args.bar == "score" and args.odds < 6.80:
-        print("note: below 6.80, the break-even price for this bar; history says skip it")
+        lg = d.rsplit("(", 1)[1].split(")", 1)[0] if "(" in d else ""
+        low = golden.cs_min_odds(cs, lg)
+        if args.bar == "score" and args.odds < low:
+            print(f"  note: below {low:.2f}, this league's break-even for the bar: skip it")
 
 
 def _analyst(args: argparse.Namespace) -> None:
@@ -585,6 +593,282 @@ def _referee_test(args: argparse.Namespace) -> None:
     out.mkdir(parents=True, exist_ok=True)
     (out / "verdict.md").write_text(text + "\n", encoding="utf-8")
     rows.to_parquet(out / "losses.parquet", index=False)
+    print(text)
+
+
+def _tune_per_league(args: argparse.Namespace) -> None:
+    """ADR 0023 stage A tuning: the combined model's grid, per league, on 2018-19 only."""
+    from football_edge.evaluation.folds import make_folds
+    from football_edge.evaluation.per_league import tune
+
+    cfg = load_config(args.config)
+    ev = cfg.evaluation
+    matches = load_matches(cfg)
+    folds = make_folds(matches, ev.first_test_season, ev.last_test_season, ev.min_train_matches)
+    t = cfg.tuning["dixon_coles"]
+    table = tune(matches, folds, cfg.models["dixon_coles"], t["grid"], tuple(t["seasons"]),
+                 workers=args.workers)  # fmt: skip
+    out = cfg.reports_dir / "tuning" / "dixon_coles_per_league.csv"
+    table.to_csv(out, index=False, float_format="%.5f")
+    best = table.groupby("league").head(1)
+    print(best.to_string(index=False))
+    print(f"saved to {out}")
+
+
+def _per_league_calibration(args: argparse.Namespace) -> None:
+    """ADR 0023 stage B: one calibration map per league against the shared map."""
+    import pandas as pd
+
+    from football_edge.evaluation.per_league import (
+        calibrate_by_league,
+        calibrated_losses,
+        confirm_2026,
+    )
+    from football_edge.models.calibration import block_bootstrap
+
+    cfg = load_config(args.config)
+    ev = cfg.reports_dir / "evaluation" / "dixon_coles"
+    raw = pd.read_parquet(ev / "predictions.parquet")
+    shared = pd.read_parquet(ev / "predictions_calibrated.parquet")
+    rho = _current_rho(cfg)
+    per = calibrate_by_league(raw, rho)
+    key = ["row"]
+    both = shared.merge(per[[*key, "exp_home", "exp_away", "cal_delta"]], on=key,
+                        suffixes=("", "_pl"))  # fmt: skip
+    both = both[both["season"] >= 2020].reset_index(drop=True)
+    a = calibrated_losses(both, rho)
+    b = calibrated_losses(both.assign(exp_home=both["exp_home_pl"], exp_away=both["exp_away_pl"],
+                                      cal_delta=both["cal_delta_pl"]), rho)  # fmt: skip
+    snap = pd.to_datetime(both["snapshot"]).dt.strftime("%Y-%m-%d")
+    lo, hi = block_bootstrap(b - a, (both["league"].astype(str) + "|" + snap).to_numpy())
+    a26, b26 = confirm_2026(raw, pd.read_parquet(ev / "predictions_2026.parquet"), rho)
+    lines = ["# One calibration map per league against the shared map (ADR 0023, stage B)", "",
+             "Sum of match result + over/under 2.5 + both-score log loss per match.", "",
+             "| League | shared map | map per league |", "|---|---|---|"]  # fmt: skip
+    for lg, g in both.assign(a=a, b=b).groupby("league"):
+        lines.append(f"| {lg} | {g['a'].mean():.5f} | {g['b'].mean():.5f} |")
+    passed = hi < 0 and b26.mean() < a26.mean()
+    lines += ["", f"2020/21-2025/26: {a.mean():.5f} -> {b.mean():.5f}, difference "
+              f"{(b - a).mean():+.5f} (95% interval {lo:+.5f} to {hi:+.5f}; {len(a):,} matches).",
+              f"2026/27 so far: {a26.mean():.5f} -> {b26.mean():.5f} ({len(a26)} matches).", "",
+              "**" + ("PASS: one map per league" if passed else "FAIL: the shared map stays")
+              + ".**"]  # fmt: skip
+    text = "\n".join(lines)
+    out = cfg.reports_dir / "calibration" / "per_league_verdict.md"
+    out.write_text(text + "\n", encoding="utf-8")
+    print(text)
+
+
+def _league_check(args: argparse.Namespace) -> None:
+    """ADR 0024: may new leagues join the model?"""
+    from football_edge.evaluation.new_leagues import check
+
+    cfg = load_config(args.config)
+    matches = load_matches(cfg)
+    present = sorted(matches["league"].unique())
+    old = [x for x in present if x not in args.new]
+    text, _ = check(matches, cfg.models["dixon_coles"], old, list(args.new),
+                    cfg.evaluation.min_train_matches)  # fmt: skip
+    out = cfg.reports_dir / "new_leagues" / "verdict.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text + "\n", encoding="utf-8")
+    print(text)
+
+
+def _promoted_spread(args: argparse.Namespace) -> None:
+    """ADR 0026 (promoted teams) and ADR 0027 (less spread) against the live model."""
+    import pandas as pd
+
+    from football_edge.evaluation.challenger import run_models
+    from football_edge.evaluation.promoted_spread import (
+        compare,
+        maps_from,
+        promoted_sides,
+        run_part,
+        secondary,
+    )
+
+    cfg = load_config(args.config)
+    matches = load_matches(cfg)
+    ev = cfg.reports_dir / "evaluation" / "dixon_coles"
+    champ = pd.concat(
+        [pd.read_parquet(ev / "predictions.parquet"),
+         pd.read_parquet(ev / "predictions_2026.parquet")],
+        ignore_index=True,
+    )  # fmt: skip
+    out = cfg.reports_dir / "challenger" / "promoted"
+    out.mkdir(parents=True, exist_ok=True)
+    b_path = out / "walk_forward_b.parquet"
+    if not b_path.exists():
+        params = {**cfg.models["dixon_coles"], "promoted_pull": 0.5}
+        r = run_models(matches, {"dixon_coles_promoted": params}, 2018, 2026,
+                       cfg.evaluation.min_train_matches)  # fmt: skip
+        r["dixon_coles_promoted"].to_parquet(b_path)
+    b_preds = pd.read_parquet(b_path)
+    rows = {"champion": run_part("champion", matches, champ, None, out)}
+    base = maps_from(pd.read_csv(out / "champion_maps.csv"))
+    for part in ("A", "B", "spread"):
+        rows[part] = run_part(part, matches, champ, b_preds, out, base)
+    level = 1 - 0.05 / 3
+    sides = promoted_sides(matches.reset_index(drop=True))
+    names = {"A": "A: promoted stretch in the calibration (ADR 0026)",
+             "B": "B: weaker pull to the promoted prior (ADR 0026)",
+             "spread": "Less spread, Conway-Maxwell-Poisson (ADR 0027)"}  # fmt: skip
+    res = {k: compare(rows["champion"], rows[k], matches, level) for k in names}
+    sec = {k: secondary(v, sides) for k, v in rows.items()}
+    maps = {k: pd.read_csv(out / f"{k}_maps.csv") for k in ("A", "spread")}
+    lines = ["# Promoted teams (ADR 0026) and goal spread (ADR 0027)", "",
+             "Per match: match result + over/under 2.5 + both-score log loss, lower is better. "
+             "Champion = the live model (Dixon-Coles + five-number calibration). Interval: 98.3% "
+             "(Bonferroni for 3), blocks = league x week.", "",
+             "| Challenger | Matches | Live model | Challenger | Difference | 98.3% interval "
+             "| 2026/27 difference | Verdict |",
+             "|---|---|---|---|---|---|---|---|"]  # fmt: skip
+    for k, name in names.items():
+        q = res[k]
+        lines.append(
+            f"| {name} | {q['n']:,} | {q['champ']:.5f} | {q['chall']:.5f} | {q['diff']:+.5f} | "
+            f"{q['lo']:+.5f} to {q['hi']:+.5f} | {q['diff_2026']:+.5f} ({q['n_2026']}) | "
+            f"{'PASS' if q['pass'] else 'FAIL'} |"
+        )
+    lines += ["", "Secondary (2020/21 onwards, not part of the rule):", "",
+              "| Model | Promoted sides, matches 1-19: goal-difference residual | Spread home | "
+              "Spread away | 0-0 predicted | 0-0 observed |",
+              "|---|---|---|---|---|---|"]  # fmt: skip
+    for k in ("champion", *names):
+        s = sec[k]
+        lines.append(f"| {k} | {s['promoted_residual']:+.3f} | {s['spread_home']:.3f} | "
+                     f"{s['spread_away']:.3f} | {s['p00']:.4f} | {s['obs00']:.4f} |")  # fmt: skip
+    a_p = maps["A"][["season", "a", "a_p"]].round(3).to_dict("records")
+    nu = maps["spread"][["season", "nu"]].round(3).to_dict("records")
+    lines += ["", f"Fitted a (others) and a_p (promoted-early) per season: {a_p}",
+              f"Fitted nu per season (1 = Poisson, above 1 = less spread): {nu}"]  # fmt: skip
+    passed = [names[k] for k in names if res[k]["pass"]]
+    lines += ["", "**" + ("PASS: " + "; ".join(passed) if passed
+                          else "FAIL: the live model stays") + ".**"]  # fmt: skip
+    text = "\n".join(lines)
+    (out / "verdict.md").write_text(text + "\n", encoding="utf-8")
+    print(text)
+
+
+def _diagnose(args: argparse.Namespace) -> None:
+    """Where the live model misses: residual checks on walk-forward predictions."""
+    import pandas as pd
+
+    from football_edge.evaluation.diagnostics import report
+
+    cfg = load_config(args.config)
+    ev = cfg.reports_dir / "evaluation" / "dixon_coles"
+    champ = pd.concat(
+        [pd.read_parquet(ev / "predictions.parquet"),
+         pd.read_parquet(ev / "predictions_2026.parquet")],
+        ignore_index=True,
+    )  # fmt: skip
+    text = report(load_matches(cfg), champ)
+    out = cfg.reports_dir / "diagnostics"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "residuals.md").write_text(text + "\n", encoding="utf-8")
+    print(text)
+
+
+def _challenge_all(args: argparse.Namespace) -> None:
+    """ADR 0025: other model families against the locked Dixon-Coles model."""
+    import numpy as np
+    import pandas as pd
+
+    from football_edge.evaluation.challenger import match_losses, run_models
+    from football_edge.evaluation.ml_challenge import MARKET_COLS, build, run_all
+    from football_edge.models.calibration import block_bootstrap
+
+    cfg = load_config(args.config)
+    matches = load_matches(cfg)
+    ev = cfg.reports_dir / "evaluation" / "dixon_coles"
+    champ = pd.concat(
+        [pd.read_parquet(ev / "predictions.parquet"),
+         pd.read_parquet(ev / "predictions_2026.parquet")],
+        ignore_index=True,
+    )  # fmt: skip
+    df = build(matches, champ)
+    out = cfg.reports_dir / "challenger" / "model_families"
+    out.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(out / "features.parquet")
+    level = 1 - 0.05 / 8
+    m = matches.reset_index(drop=True)
+    week = (m["date"] - pd.to_timedelta(m["date"].dt.dayofweek, unit="D")).dt.strftime("%Y-%m-%d")
+    block = (m["league"].astype(str) + "|" + week)
+
+    def losses(p: pd.DataFrame, rows: np.ndarray) -> pd.DataFrame:
+        return match_losses(p.assign(goals_home=m.loc[rows, "FTHG"].to_numpy(int),
+                                     goals_away=m.loc[rows, "FTAG"].to_numpy(int)))  # fmt: skip
+
+    results = []
+
+    def judge(name: str, ch: pd.DataFrame, cp: pd.DataFrame) -> None:
+        rows = ch.index.to_numpy()
+        a, b = losses(cp.loc[rows, MARKET_COLS], rows), losses(ch[MARKET_COLS], rows)
+        season = m.loc[rows, "season"].to_numpy()
+        main, conf = (season >= 2020) & (season <= 2025), season == 2026
+        d = (b["sum"] - a["sum"]).to_numpy()
+        lo, hi = block_bootstrap(d[main], block.loc[rows].to_numpy()[main], level=level)
+        results.append({
+            "challenger": name,
+            **{f"champ_{k}": float(a[k][main].mean()) for k in ("1x2", "ou25", "btts", "sum")},
+            **{f"chall_{k}": float(b[k][main].mean()) for k in ("1x2", "ou25", "btts", "sum")},
+            "diff": float(d[main].mean()), "lo": lo, "hi": hi, "diff_2026": float(d[conf].mean()),
+            "pass": bool(hi < 0 and d[conf].mean() < 0),
+        })  # fmt: skip
+
+    cp = champ.set_index("row")
+    for name, p in run_all(df, list(range(2020, 2027))).items():
+        judge(name, p, cp)
+    mt = cfg.evaluation.min_train_matches
+    bv_parts: list[pd.DataFrame] = []
+    bv_champ: list[pd.DataFrame] = []
+    for lo_s, hi_s in ((2020, 2025), (2026, 2026)):
+        pair = {"dixon_coles": cfg.models["dixon_coles"],
+                "bivariate_poisson": cfg.models["dixon_coles"]}  # fmt: skip
+        r = run_models(matches, pair, lo_s, hi_s, mt)
+        r["bivariate_poisson"].to_parquet(out / f"bivariate_{lo_s}.parquet")
+        bv_parts.append(r["bivariate_poisson"])
+        bv_champ.append(r["dixon_coles"])
+    judge("bivariate Poisson", pd.concat(bv_parts).set_index("row"),
+          pd.concat(bv_champ).set_index("row"))  # fmt: skip
+    bench = run_models(matches, {"elo": cfg.models.get("elo", {}), "glicko": {}}, 2020, 2025, mt)
+    rows_b = bench["elo"]["row"].to_numpy()
+    y = m.loc[rows_b, "FTR"].map({"H": 0, "D": 1, "A": 2}).to_numpy()
+
+    def ll(p: np.ndarray) -> float:
+        return float(-np.mean(np.log(np.clip(p[np.arange(len(y)), y], 1e-12, 1))))
+
+    champ_1x2 = ll(cp.loc[rows_b, ["p_h", "p_d", "p_a"]].to_numpy())
+    bench_lines = [
+        f"| {n} | {ll(bench[n][['p_h', 'p_d', 'p_a']].to_numpy()):.5f} | {champ_1x2:.5f} |"
+        for n in ("elo", "glicko")
+    ]
+    t = pd.DataFrame(results)
+    t.to_csv(out / "results.csv", index=False)
+    lines = ["# Other model families against Dixon-Coles (ADR 0025)", "",
+             "Log loss per match, 2020/21-2025/26 (lower is better). Interval: 99.4% "
+             "(Bonferroni for 8), blocks = league x week.", "",
+             "| Challenger | Result | Over/under | Both score | Sum | Dixon-Coles sum | Difference "
+             "| 99.4% interval | 2026/27 difference | Verdict |",
+             "|---|---|---|---|---|---|---|---|---|---|"]  # fmt: skip
+    for row in t.sort_values("diff").to_dict("records"):
+        lines.append(
+            f"| {row['challenger']} | {row['chall_1x2']:.4f} | {row['chall_ou25']:.4f} | "
+            f"{row['chall_btts']:.4f} | {row['chall_sum']:.4f} | {row['champ_sum']:.4f} | "
+            f"{row['diff']:+.4f} | {row['lo']:+.4f} to {row['hi']:+.4f} | "
+            f"{row['diff_2026']:+.4f} | "
+            f"{'PASS' if row['pass'] else 'FAIL'} |"
+        )
+    lines += ["", f"Dixon-Coles alone: result {t['champ_1x2'].iloc[0]:.4f}, over/under "
+              f"{t['champ_ou25'].iloc[0]:.4f}, both score {t['champ_btts'].iloc[0]:.4f}.", "",
+              "Benchmarks (match result only, weekly refits):", "",
+              "| Model | Result log loss | Dixon-Coles |", "|---|---|---|", *bench_lines, "",
+              "**" + ("PASS: " + ", ".join(t[t["pass"]]["challenger"]) if t["pass"].any()
+                      else "FAIL: Dixon-Coles stays") + ".**"]  # fmt: skip
+    text = "\n".join(lines)
+    (out / "verdict.md").write_text(text + "\n", encoding="utf-8")
     print(text)
 
 
@@ -1022,7 +1306,7 @@ def _predict(args: argparse.Namespace) -> None:
         elif key == "golden_ou":
             picks = golden.ou_picks(fc, conf)
         else:
-            picks = golden.cs_picks(fc, float(conf.get("lo", 0.12)))
+            picks = golden.cs_picks(fc, float(conf.get("lo", 0.12)), conf.get("leagues"))
         path = cfg.root / conf.get("log_path", default)
         n_new = golden.log_picks(picks, path, today)
         track.append(f"- {n_new} new pick(s) logged. {golden.scoreboard(golden.read(path), name)}")
@@ -1259,6 +1543,7 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=_h2h_weight_test)
 
     p = sub.add_parser("bar-test", help="pre-registered probability-bar test per market")
+    p.add_argument("--out", help="report folder under reports/ (default: prob_bar)")
     p.set_defaults(func=_bar_test)
 
     p = sub.add_parser("window-search", help="pre-registered search of every probability window")
@@ -1267,6 +1552,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--both", action="store_true", help="every window in both periods, best 2")
     p.add_argument("--bars", action="store_true", help="open-ended bars (X%% or more), best 2")
     p.add_argument("--above", type=float, help="with --by-league: windows from this up (0015: 0.5)")
+    p.add_argument("--shuffles", type=int, default=1,
+                   help="with --both: repeat the luck control this many times (e.g. 200)")
+    p.add_argument("--calibrated", action="store_true",
+                   help="search the calibrated chances the site shows (from 2019/20)")
+    p.add_argument("--out", help="report folder under reports/ (default: by search type)")
     p.set_defaults(func=_window_search)
 
     p = sub.add_parser("price", help="record your site's price for a golden pick")
@@ -1319,6 +1609,26 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("build-matches", help="rebuild the processed table from data/raw only")
     p.set_defaults(func=_build_matches)
 
+    p = sub.add_parser("tune-per-league", help="tune each league's own settings (ADR 0023)")
+    p.add_argument("--workers", type=int, default=2)
+    p.set_defaults(func=_tune_per_league)
+
+    p = sub.add_parser("per-league-calibration", help="calibration map per league (ADR 0023)")
+    p.set_defaults(func=_per_league_calibration)
+
+    p = sub.add_parser("promoted-spread", help="promoted teams and goal spread (0026, 0027)")
+    p.set_defaults(func=_promoted_spread)
+
+    p = sub.add_parser("diagnose", help="where the live model misses (residual checks)")
+    p.set_defaults(func=_diagnose)
+
+    p = sub.add_parser("challenge-all", help="ML and other model families vs Dixon-Coles (0025)")
+    p.set_defaults(func=_challenge_all)
+
+    p = sub.add_parser("league-check", help="may new leagues join the model? (ADR 0024)")
+    p.add_argument("--new", nargs="+", default=["D1", "F1"])
+    p.set_defaults(func=_league_check)
+
     p = sub.add_parser("challenge", help="locked goals model against a challenger (ADR 0022)")
     p.add_argument("--model", default="dixon_coles_dynamic")
     p.set_defaults(func=_challenge)
@@ -1359,7 +1669,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--home", help='one match: home team, e.g. "Arsenal"')
     p.add_argument("--away", help='one match: away team, e.g. "Man United"')
-    p.add_argument("--league", help="E0, I1 or SP1 (only needed if the names are ambiguous)")
+    p.add_argument("--league", help="E0, I1, SP1, D1 or F1 (only needed if names are ambiguous)")
     p.add_argument("--date", help="match date, e.g. 2026-11-22 (default: today)")
     p.add_argument("--odds", type=float, nargs=3, metavar=("H", "D", "A"), help="site 1X2 odds")
     p.add_argument(

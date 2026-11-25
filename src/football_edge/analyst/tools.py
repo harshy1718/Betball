@@ -13,11 +13,12 @@ import pandas as pd
 from football_edge.config import Config
 from football_edge.content.facts import build_fact_sheet, display_names
 from football_edge.data.loader import load_matches
+from football_edge.leagues import NAMES
 from football_edge.predict.confidence import load_track_record
 from football_edge.predict.fixtures import FixtureError, single_fixture
 from football_edge.predict.pipeline import forecast_with_model
 
-LEAGUES = {"E0": "Premier League", "I1": "Serie A", "SP1": "La Liga"}
+LEAGUES = NAMES
 NICKNAMES = {
     "spurs": "Tottenham", "barca": "Barcelona", "barça": "Barcelona", "atleti": "Ath Madrid",
     "atletico": "Ath Madrid", "athletic": "Ath Bilbao", "bilbao": "Ath Bilbao",
@@ -37,7 +38,10 @@ SCHEMAS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "days": {"type": "integer", "description": "how many days ahead, default 2"},
-                "league": {"type": "string", "description": "optional: EPL, Serie A or La Liga"},
+                "league": {
+                    "type": "string",
+                    "description": "optional: EPL, Serie A, La Liga, Bundesliga or Ligue 1",
+                },
             },
         },
     },
@@ -164,7 +168,9 @@ class AnalystTools:
             return self._reverse.get(hit) or next(t for t in all_teams if t.lower() == hit)
         maybe = difflib.get_close_matches(name.lower(), [p.lower() for p in pool], n=3, cutoff=0.5)
         hint = f"; did you mean {', '.join(maybe)}?" if maybe else ""
-        raise ToolError(f"unknown team '{name}'{hint} (EPL, Serie A and La Liga only)")
+        raise ToolError(
+            f"unknown team '{name}'{hint} (EPL, Serie A, La Liga, Bundesliga and Ligue 1 only)"
+        )
 
     def _show(self, league: str, team: str) -> str:
         return self.names.get((league, team), team)

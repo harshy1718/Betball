@@ -33,7 +33,9 @@ are used: the desk builds slips from them, the tracking log grades them.
 Research commands added 25 Nov 2026: `calibrate` (ADR 0020), `replay-desk` (the desk on past
 seasons with nothing from the future), `referee-test` (ADR 0021), `challenge --model <name>`
 (the locked goals model against a challenger on the same weekly folds; ADR 0022 tested
-dynamic ratings with it and kept the locked model).
+dynamic ratings with it and kept the locked model), `tune-per-league` and
+`per-league-calibration` (ADR 0023: a model and a calibration per league; both kept the
+combined versions).
 
 Run one: `football-edge evaluate --model elo`. Output in `reports/evaluation/<model>/`: `summary.csv` (kept in git), `predictions.parquet` (rebuilt, ignored), `run.json` (git SHA, parameters, data hash).
 

@@ -6,7 +6,13 @@ import Nox from "../components/Nox";
 import { Loading, Page, PrivateTabs, Problem } from "../components/ui";
 import { pct, tracking, useApi, type GradedCall, type ScoreRow, type Scorecard as Card } from "../api";
 
-const LEAGUES: Record<string, string> = { E0: "Premier League", I1: "Serie A", SP1: "La Liga" };
+const LEAGUES: Record<string, string> = {
+  E0: "Premier League",
+  I1: "Serie A",
+  SP1: "La Liga",
+  D1: "Bundesliga",
+  F1: "Ligue 1",
+};
 const n3 = (x: number | null) => (x == null ? "–" : x.toFixed(3));
 
 function day(iso: string) {
@@ -200,6 +206,24 @@ function Calibration({ card }: { card: Card }) {
   );
 }
 
+function ByLeague({ card }: { card: Card }) {
+  if (!card.by_league?.length) return null;
+  return (
+    <section className="stack-10" aria-label="By league">
+      <h2>League by league</h2>
+      <p className="muted sc-explain">
+        Each league on its own: every league behaves differently, so a model that is fine overall can still be off in one of
+        them. The badge compares Nox with that league’s own usual rates.
+      </p>
+      <div className="sc-markets">
+        {card.by_league.map((l) => (
+          <MarketCard key={l.league} r={{ ...l.overall, family: `lg-${l.league}`, name: l.name }} min={card.min_sample} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Extras({ card }: { card: Card }) {
   return (
     <div className="cards">
@@ -326,6 +350,7 @@ function Body({ card }: { card: Card }) {
               ))}
             </div>
           </section>
+          <ByLeague card={card} />
           <Calibration card={card} />
           <Extras card={card} />
         </>

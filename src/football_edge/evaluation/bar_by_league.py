@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from football_edge.evaluation import window_search as ws
+from football_edge.evaluation.window_both import leagues_in
 from football_edge.markets.price_edge import bootstrap_roi
 
 LEVEL = 1 - 0.05 / 8
@@ -72,7 +73,7 @@ def _run(m: pd.DataFrame, lo_min: float) -> str:
             "| Unseen ROI | Interval | Profitable windows: real / placebo | Golden bar? |",
             "|---|---|---|---|---|---|---|---|---|---|",
         ]
-        for lname, lg in LEAGUES.items():
+        for lname, lg in leagues_in(m).items():
             r = search(m, market, lg)
             if r["found"]:
                 found.append(f"{mname}, {lname}: {r['window']}")
@@ -85,10 +86,11 @@ def _run(m: pd.DataFrame, lo_min: float) -> str:
         if market == "1x2":
             lines += ["", "Your current bar (60-64%) on the unseen seasons, by league:", "",
                       "| League | Bets | ROI |", "|---|---|---|"]  # fmt: skip
-            for lname, lg in LEAGUES.items():
+            for lname, lg in leagues_in(m).items():
                 r = search(m, market, lg)
                 lines.append(f"| {lname} | {r['bar_bets']} | {r['bar_roi']:+.1%} |")
+    n_search = 2 * len(leagues_in(m))
     lines += ["", "## Verdict", "",
               ("Golden bars found: " + "; ".join(found)) if found
-              else "No golden bar found in any of the 8 searches."]  # fmt: skip
+              else f"No golden bar found in any of the {n_search} searches."]  # fmt: skip
     return "\n".join(lines) + "\n"

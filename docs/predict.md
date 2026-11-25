@@ -29,7 +29,7 @@ league,date,home,away,odds_h,odds_d,odds_a,odds_over25,odds_under25,odds_btts_ye
 EPL,22/11/2026,Arsenal,Manchester United,1.55,4.2,5.5,1.65,2.2,1.75,2.0
 Serie A,23/11/2026,Inter,Lecce,,,,,,,
 ```
-- `league`: E0/I1/SP1, or EPL, Premier League, Serie A, La Liga.
+- `league`: E0/I1/SP1/D1/F1, or EPL, Premier League, Serie A, La Liga, Bundesliga, Ligue 1.
 - Optional `ref_h,ref_d,ref_a,ref_over25,ref_under25,ref_btts_yes,ref_btts_no`: the same match at a sharp bookmaker (Pinnacle). They set the market's fair probability; without them your site's own prices are used for that. football-data's `fixtures.csv` already includes Pinnacle.
 - Odds columns are optional; leave blank if you don't have a price. Without a price the card says "bet if price >= min_odds".
 - Site names like "Manchester United" are mapped by `configs/team_aliases.yaml`. An unknown name stops the run and suggests the closest names; add the alias and run again.

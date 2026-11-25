@@ -24,7 +24,26 @@ BARS = (  # (config key under `staking`, default log file, scoreboard name)
     ("golden_ou", "bets/golden_ou.csv", "Over/under bar"),
     ("golden_cs", "bets/golden_cs.csv", "Correct-score bar"),
 )
-CS_MIN_ODDS = 6.80  # break-even of the correct-score bar in 2020-26 (14.7% came true)
+CS_MIN_ODDS = 6.80  # fallback break-even (14.7% came true, 2020-26, three leagues)
+
+
+def cs_min_odds(cs: dict[str, Any] | None, league: str) -> float:
+    """The lowest price worth taking on the correct-score bar in a league: its break-even,
+    1 / how often the 12%+ likeliest score came in there (`golden_cs.min_odds`)."""
+    return float(((cs or {}).get("min_odds") or {}).get(league, CS_MIN_ODDS))
+
+
+def unadjusted(fc: pd.DataFrame, cols: list[str]) -> np.ndarray:
+    """The model's chances BEFORE calibration (raw_* columns) where the forecast has them.
+    Every golden window was searched on these (reports/window_both_above_50*), so a bar must be
+    checked on the same scale; calibration (ADR 0020) moves chances by a few points."""
+    raw = [f"raw_{c}" for c in cols]
+    out = fc[cols].to_numpy(float).copy()
+    if all(c in fc for c in raw):
+        r = fc[raw].to_numpy(float)
+        ok = ~np.isnan(r).any(axis=1)
+        out[ok] = r[ok]
+    return out
 
 
 def winner_window(gb: dict[str, Any], league: str) -> tuple[float, float]:
@@ -41,7 +60,7 @@ def _pct(lo: float, hi: float) -> str:
 
 def golden_picks(fc: pd.DataFrame, gb: dict[str, Any]) -> pd.DataFrame:
     """Match-winner bar: fixtures whose model favourite is inside its league's window."""
-    probs = fc[["p_h", "p_d", "p_a"]].to_numpy(float)
+    probs = unadjusted(fc, ["p_h", "p_d", "p_a"])
     i = probs.argmax(axis=1)
     p = probs.max(axis=1)
     odds_cols = ["odds_h", "odds_d", "odds_a"]
@@ -57,12 +76,15 @@ def golden_picks(fc: pd.DataFrame, gb: dict[str, Any]) -> pd.DataFrame:
     })  # fmt: skip
     windows = [winner_window(gb, str(lg)) for lg in out["league"]]
     keep = [lo <= q < hi for q, (lo, hi) in zip(out["prob"], windows, strict=True)]
+    leagues = set(gb.get("leagues") or [])  # golden bars only where they were set up
+    if leagues:
+        keep = [k and lg in leagues for k, lg in zip(keep, out["league"], strict=True)]
     return out[keep].reset_index(drop=True)
 
 
 def ou_picks(fc: pd.DataFrame, go: dict[str, Any]) -> pd.DataFrame:
     """Over/under bar: the model's over/under 2.5 pick, in the listed leagues, inside [lo, hi)."""
-    q = fc["p_over25"].to_numpy(float)
+    q = unadjusted(fc, ["p_over25"])[:, 0]
     over = q >= 0.5
     p = np.where(over, q, 1 - q)
     if "odds_over25" in fc and "odds_under25" in fc:
@@ -100,21 +122,38 @@ def flags(f: pd.Series, st: dict[str, Any]) -> dict[str, str]:
         g = ou_picks(row, go)
         if len(g):
             out["ou"] = f"⭐ {g.iloc[0]['label']} {float(g.iloc[0]['prob']):.0%}"
-    if cs and "top_score_p" in f and float(f["top_score_p"]) >= float(cs.get("lo", 0.12)):
-        out["cs"] = (f"⭐ {f['top_score']} {float(f['top_score_p']):.1%} "
-                     f"(take at {CS_MIN_ODDS:.2f}+)")  # fmt: skip
+    cs_ok = cs and (not cs.get("leagues") or str(f.get("league")) in set(cs["leagues"]))
+    score, score_p = top_score(f)
+    if cs_ok and score_p is not None and score_p >= float(cs.get("lo", 0.12)):
+        low = cs_min_odds(cs, str(f.get("league")))
+        out["cs"] = f"⭐ {score} {score_p:.1%} (take at {low:.2f}+)"
     return out
 
 
-def cs_picks(fc: pd.DataFrame, lo: float) -> pd.DataFrame:
-    """Correct-score golden bar: fixtures whose single likeliest score has probability >= lo."""
+def top_score(f: pd.Series) -> tuple[str | None, float | None]:
+    """The likeliest score and its chance, before calibration when the forecast has it."""
+    if "raw_top_score_p" in f and pd.notna(f["raw_top_score_p"]):
+        return str(f["raw_top_score"]), float(f["raw_top_score_p"])
+    if "top_score_p" in f and pd.notna(f["top_score_p"]):
+        return str(f["top_score"]), float(f["top_score_p"])
+    return None, None
+
+
+def cs_picks(fc: pd.DataFrame, lo: float, leagues: list[str] | None = None) -> pd.DataFrame:
+    """Correct-score golden bar: fixtures whose single likeliest score has probability >= lo
+    (only in `leagues`, when given). Uses the chances before calibration, as searched."""
+    raw = "raw_top_score_p" in fc and fc["raw_top_score_p"].notna().all()
+    scores = fc["raw_top_score" if raw else "top_score"].to_numpy()
+    probs = fc["raw_top_score_p" if raw else "top_score_p"].to_numpy(float)
     out = pd.DataFrame({
         "league": fc["league"].to_numpy(), "date": pd.to_datetime(fc["date"]).to_numpy(),
         "home": fc["home"].to_numpy(), "away": fc["away"].to_numpy(),
-        "pick": fc["top_score"].to_numpy(), "label": fc["top_score"].to_numpy(),
-        "prob": fc["top_score_p"].to_numpy(float), "site_odds": np.nan,
+        "pick": scores, "label": scores, "prob": probs, "site_odds": np.nan,
     })  # fmt: skip
-    return out[out["prob"] >= lo].reset_index(drop=True)
+    keep = out["prob"] >= lo
+    if leagues:
+        keep &= out["league"].isin(leagues)
+    return out[keep].reset_index(drop=True)
 
 
 def read(path: Path) -> pd.DataFrame:
@@ -160,9 +199,9 @@ def set_price(path: Path, team: str, odds: float) -> list[str]:
     )
     log.loc[hit, "site_odds"] = float(odds)
     log.to_csv(path, index=False, float_format="%.4f")
-    return [f"{h} v {a}: {p} at {odds:.2f}"
-            for h, a, p in zip(log.loc[hit, "home"], log.loc[hit, "away"], log.loc[hit, "pick"],
-                               strict=True)]  # fmt: skip
+    return [f"{h} v {a} ({lg}): {p} at {odds:.2f}"
+            for h, a, p, lg in zip(log.loc[hit, "home"], log.loc[hit, "away"], log.loc[hit, "pick"],
+                                   log.loc[hit, "league"], strict=True)]  # fmt: skip
 
 
 def settle(path: Path, matches: pd.DataFrame, stake: float = 100.0) -> pd.DataFrame:

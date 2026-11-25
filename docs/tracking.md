@@ -58,6 +58,8 @@ Rules:
   - **the market**: the bookmakers' closing prices with their margin removed (match result and
     over/under 2.5 only; no closing prices exist for the other markets in our data). This is the
     bar a paying customer would set: odds are free to read.
+- **League by league**: the overall accuracy of each league on its own, against that league's
+  usual rates (ADR 0023), so a league that drifts shows up.
 - **Calibration**: of everything called at 60-70%, how much came in.
 - **Is the calibration helping?**: the calibrated chances against the raw ones logged next to
   them, same matches. At 300 graded matches, if raw is more accurate, calibration goes off.

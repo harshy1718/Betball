@@ -1,4 +1,5 @@
-"""Dixon-Coles goals model (Dixon & Coles, 1997), adapted for three leagues.
+"""Dixon-Coles goals model (Dixon & Coles, 1997), adapted for several leagues fitted together
+(Premier League, Serie A, La Liga; Bundesliga and Ligue 1 since ADR 0024).
 
 The idea: predict how many goals each side scores, then turn the goal
 distribution into home/draw/away probabilities.
@@ -88,6 +89,9 @@ class DixonColesParams:
     # change). 0 = one rating per team (the locked model).
     dynamic_weeks: int = 0
     rw: float = 0.0
+    # ADR 0026 B: strength of the pull towards the promoted prior for teams promoted this
+    # season, as a share of `ridge` (1.0 = same as everyone, the locked model).
+    promoted_pull: float = 1.0
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> DixonColesParams:
@@ -365,12 +369,14 @@ class DixonColes:
         self._prior_att, self._prior_def = self._promoted_prior(df)
         prior_att = np.zeros(n_t)
         prior_def = np.zeros(n_t)
+        pull = np.ones(n_t)
         latest = df.groupby("league")["season"].max().to_dict()
         for (lg, team), i in self._team_idx.items():
             played = self._seasons_played[(lg, team)]
             cur = int(latest[lg])
             if cur in played and (cur - 1) not in played and cur - 1 >= df["season"].min():
                 prior_att[i], prior_def[i] = self._prior_att, self._prior_def
+                pull[i] = p.promoted_pull
 
         lg_i = df["league"].map(self._league_idx).to_numpy()
         h_i = np.array([self._team_idx[k] for k in zip(df.league, df.home, strict=True)])
@@ -484,12 +490,17 @@ class DixonColes:
             d_att, d_def = att - prior_att, dfn - prior_def
             if p.dynamic_weeks > 0:  # ridge only where a spell starts; the walk does the rest
                 d_att, d_def = d_att * start_mask, d_def * start_mask
+            if p.dynamic_weeks == 0 and p.promoted_pull != 1.0:  # ADR 0026 B
+                w_att, w_def = pull * d_att, pull * d_def
+            else:
+                w_att, w_def = d_att, d_def
             pen = p.ridge * (
-                np.sum(d_att**2) + np.sum(d_def**2) + c**2 + g_gd**2 + g_tot**2 + beta @ beta
-            )
+                np.sum(w_att * d_att) + np.sum(w_def * d_def) + c**2 + g_gd**2 + g_tot**2
+                + beta @ beta
+            )  # fmt: skip
             g = -grad
-            g[o_att:o_def] += 2 * p.ridge * d_att
-            g[o_def:o_g] += 2 * p.ridge * d_def
+            g[o_att:o_def] += 2 * p.ridge * w_att
+            g[o_def:o_g] += 2 * p.ridge * w_def
             if len(links):
                 i0, i1, wl = links[:, 0].astype(int), links[:, 1].astype(int), links[:, 2]
                 for o in (o_att, o_def):

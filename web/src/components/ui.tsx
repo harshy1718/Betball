@@ -89,7 +89,7 @@ export function Page({ children, trained }: { children: ReactNode; trained?: str
         <Header />
         <main className="stack-36">{children}</main>
         <footer className="footer">
-          Nox reads our model, trained on Premier League, Serie A and La Liga results
+          Nox reads our model, trained on Premier League, Serie A, La Liga, Bundesliga and Ligue 1 results
           {trained ? ` up to ${trained}` : ""}. Predictions are chances, not certainties.
         </footer>
       </div>

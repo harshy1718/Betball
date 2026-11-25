@@ -44,6 +44,11 @@ _LEAGUE_ALIASES = {
     "sp1": "SP1",
     "la liga": "SP1",
     "laliga": "SP1",
+    "d1": "D1",
+    "bundesliga": "D1",
+    "f1": "F1",
+    "ligue 1": "F1",
+    "ligue1": "F1",
 }
 
 REF_COLS = tuple(c.replace("odds_", "ref_") for c in ODDS_COLS)

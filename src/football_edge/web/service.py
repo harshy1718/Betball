@@ -21,12 +21,13 @@ from football_edge.betting import golden
 from football_edge.config import Config
 from football_edge.content.facts import _form, build_fact_sheet, display_names
 from football_edge.data.loader import load_matches
+from football_edge.leagues import NAMES
 from football_edge.predict.confidence import load_track_record
 from football_edge.predict.fixtures import from_schedule
 from football_edge.predict.forecast import TrainingInfo
 from football_edge.predict.pipeline import forecast_with_model
 
-LEAGUES = {"E0": "Premier League", "I1": "Serie A", "SP1": "La Liga"}
+LEAGUES = NAMES
 IST = "Asia/Kolkata"
 GRID = 6  # scoreline grid 0..5 goals each side
 
@@ -164,8 +165,8 @@ class NoxService:
                     "kind": "win", "title": "Match winner",
                     "call": f"{team} win" if team != "Draw" else "Draw",
                     "p": float(g.iloc[0]["prob"]),
-                    "rule": f"{float(g.iloc[0]['prob']):.0%} sits inside {league}'s "
-                            f"{lo:.0%}-{hi:.0%} window",
+                    "rule": f"the model's unadjusted chance, {float(g.iloc[0]['prob']):.0%}, sits "
+                            f"inside {league}'s {lo:.0%}-{hi:.0%} window",
                 })  # fmt: skip
         if go:
             g = golden.ou_picks(row, go)
@@ -174,14 +175,19 @@ class NoxService:
                 out.append({
                     "kind": "ou", "title": "Over / under 2.5",
                     "call": str(g.iloc[0]["label"]).capitalize(), "p": float(g.iloc[0]["prob"]),
-                    "rule": f"{float(g.iloc[0]['prob']):.0%} sits inside the {lo:.0%}-{hi:.0%} "
-                            "window",
+                    "rule": f"the model's unadjusted chance, {float(g.iloc[0]['prob']):.0%}, sits "
+                            f"inside the {lo:.0%}-{hi:.0%} window",
                 })  # fmt: skip
-        if cs and float(f["top_score_p"]) >= float(cs.get("lo", 0.12)):
+        cs_leagues = set(cs.get("leagues") or []) if cs else set()
+        score, score_p = golden.top_score(f)
+        if cs and (not cs_leagues or lg in cs_leagues) and score_p is not None and score_p >= float(
+            cs.get("lo", 0.12)
+        ):
             out.append({
-                "kind": "cs", "title": "Correct score", "call": str(f["top_score"]),
-                "p": float(f["top_score_p"]),
-                "rule": f"the likeliest score clears the {float(cs.get('lo', 0.12)):.0%} bar",
+                "kind": "cs", "title": "Correct score", "call": str(score), "p": score_p,
+                "rule": f"the likeliest score's unadjusted chance clears the "
+                        f"{float(cs.get('lo', 0.12)):.0%} bar; take only at "
+                        f"{golden.cs_min_odds(cs, lg):.2f} or more in {league}",
             })  # fmt: skip
         return out
 

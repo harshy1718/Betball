@@ -195,6 +195,8 @@ def test_fixtures_to_settled_slips_and_pushed_log(world):
     assert card["graded_matches"] == 10 and card["log_ok"]
     assert card["calibration_check"]["matches"] == 10
     assert card["calibration_check"]["status"].startswith("Collecting")
+    assert [x["league"] for x in card["by_league"]] == ["E0"]
+    assert card["by_league"][0]["overall"]["n"] > 0
     hist = desk.history()
     assert hist["slips"][0]["result"] is not None
 

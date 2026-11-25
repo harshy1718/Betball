@@ -24,11 +24,12 @@ import pandas as pd
 
 from football_edge.config import Config
 from football_edge.content.script import BETTING_WORDS
+from football_edge.leagues import TAGS
 from football_edge.tracking.results import Results
 from football_edge.tracking.scorecard import graded_posts
 from football_edge.tracking.snapshot import ledgers
 
-LEAGUE_TAGS = {"E0": "PremierLeague", "I1": "SerieA", "SP1": "LaLiga"}
+LEAGUE_TAGS = TAGS
 
 
 class NotPostableError(ValueError):
